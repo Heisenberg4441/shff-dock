@@ -83,6 +83,19 @@ export function App() {
       />
       <MobileMenu items={NAV} open={menuOpen} />
 
+      {/*
+        Выдуманный хост обязан быть виден сразу и всегда. Mock рисует
+        правдоподобные цифры — 64 ГБ, 4 ТБ, месяц аптайма, — и без этой полосы
+        его невозможно отличить от настоящего железа, пока не полезешь в логи.
+      */}
+      {driver?.driver === 'mock' ? (
+        <div className="dock-mock">
+          <span className="dock-mock-tag">MOCK</span>
+          выдуманный хост — докер не подключён, все цифры и действия синтетические.
+          Настоящий режим включается переменной DOCK_DRIVER=docker
+        </div>
+      ) : null}
+
       <div className="dock-main">
         {!connected ? (
           <div className="dock-offline">
@@ -93,6 +106,11 @@ export function App() {
           <div className="dock-offline">
             <span style={{ color: 'var(--warn)' }}>●</span>
             {`докер недоступен: ${driver.message ?? 'сокет не отвечает'}`}
+          </div>
+        ) : driver?.driver === 'docker' && !driver.composeVersion ? (
+          <div className="dock-offline">
+            <span style={{ color: 'var(--warn)' }}>●</span>
+            в образе панели нет docker compose — стеки поднять не выйдет
           </div>
         ) : null}
 

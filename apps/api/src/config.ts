@@ -32,7 +32,27 @@ function firstExisting(candidates: string[], fallback: string): string {
   return fallback;
 }
 
-const driverEnv = str('DOCK_DRIVER', 'mock').toLowerCase();
+const socketPath = str('DOCK_DOCKER_SOCKET', '/var/run/docker.sock');
+const driverEnv = str('DOCK_DRIVER', 'auto').toLowerCase();
+
+/**
+ * Драйвер по умолчанию выбирается по факту: есть сокет — работаем с докером,
+ * нет — с выдуманным хостом.
+ *
+ * Раньше умолчанием был mock, и это оказалось ловушкой: панель в контейнере,
+ * до которой переменная почему-либо не доехала, молча рисовала правдоподобные
+ * 64 ГБ и 4 ТБ, и отличить её от настоящей можно было только по логам.
+ * Явные `mock` и `docker` по-прежнему считаются приказом.
+ */
+function pickDriver(): 'mock' | 'docker' {
+  if (driverEnv === 'docker') return 'docker';
+  if (driverEnv === 'mock') return 'mock';
+  try {
+    return fs.existsSync(socketPath) ? 'docker' : 'mock';
+  } catch {
+    return 'mock';
+  }
+}
 
 /**
  * Корень раскладки. Всё, что панель создаёт на хосте, лежит здесь и нигде
@@ -51,7 +71,7 @@ export const config = {
   host: str('HOST', '0.0.0.0'),
 
   /** mock — синтетический хост, docker — настоящий демон на сокете. */
-  driver: (driverEnv === 'docker' ? 'docker' : 'mock') as 'mock' | 'docker',
+  driver: pickDriver(),
 
   paths: {
     root: dockRoot,
@@ -76,7 +96,7 @@ export const config = {
   registryTtlMinutes: int('DOCK_REGISTRY_TTL', 60),
 
   docker: {
-    socketPath: str('DOCK_DOCKER_SOCKET', '/var/run/docker.sock'),
+    socketPath,
     /** Docker-сеть, в которую подключаются стеки. */
     network: str('DOCK_NETWORK', 'dock'),
     /** Показывать ли контейнеры, созданные не через dock. */

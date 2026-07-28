@@ -281,6 +281,40 @@
   color: var(--faint);
 }
 
+/* Полоса mock-режима. Липкая и амберная: её нельзя не заметить и нельзя
+   пролистать — выдуманный хост не должен ни секунды выглядеть настоящим. */
+.dock-mock {
+  position: sticky;
+  top: var(--topbar-h);
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 9px var(--gutter);
+  background: color-mix(in srgb, var(--warn) 12%, var(--bg));
+  border-bottom: 1px solid var(--warn);
+  font-size: var(--fs-body);
+  color: var(--text);
+}
+
+.dock-mock-tag {
+  flex: none;
+  padding: 1px 7px;
+  border-radius: var(--r-xs);
+  background: var(--warn);
+  color: var(--bg);
+  font-weight: var(--fw-bold);
+  font-size: var(--fs-micro);
+  letter-spacing: var(--ls-brand);
+}
+
+@media (max-width: 680px) {
+  .dock-mock {
+    padding: 9px var(--gutter-sm);
+    font-size: var(--fs-caption);
+  }
+}
+
 /* полоса состояния соединения с ядром */
 .dock-offline {
   display: flex;

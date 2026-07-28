@@ -82,6 +82,12 @@ async function main(): Promise<void> {
       config.metrics.hostMounted ? 'хостовые' : 'только контейнер'
     }`,
   );
+  if (config.driver === 'mock') {
+    app.log.warn(
+      `MOCK-РЕЖИМ: хост выдуманный, докер не трогается. Сокет ${config.docker.socketPath} не найден` +
+        ' — примонтируй его или задай DOCK_DRIVER=docker',
+    );
+  }
 }
 
 main().catch((err) => {
