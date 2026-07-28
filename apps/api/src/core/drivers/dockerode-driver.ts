@@ -1,33 +1,27 @@
-import fs from 'node:fs/promises';
-import path from 'node:path';
 import { Writable } from 'node:stream';
 import Docker from 'dockerode';
 import type Dockerode from 'dockerode';
-import type { DriverInfo, HostStats, LogLevel, RestartPolicy, Service, ServiceConfig } from '@dock/shared';
+import type {
+  ContainerRef,
+  DriverInfo,
+  HostStats,
+  InstalledStack,
+  LogLevel,
+  RestartPolicy,
+  Service,
+  ServiceStatus,
+  StackValues,
+} from '@dock/shared';
 import type { Config } from '../../config';
-import { composeYaml } from '../catalog';
-import type { CreateServiceSpec, DockerDriver, DriverContext, ProgressFn } from '../driver';
+import type { DockerDriver, DriverContext, ProgressFn } from '../driver';
 import { DriverError, NotFoundError } from '../driver';
-import { clampPct, humanDuration, parseEnv, stringifyEnv, usageLabel } from '../format';
+import { clampPct, humanDuration, usageLabel } from '../format';
 import { HostMetrics, volumeFillPct } from '../host-metrics';
+import type { StackManager } from '../stacks/manager';
 
-/**
- * Метки, которыми dock помечает свои контейнеры. Всё, что панель знает о
- * сервисе сверх докеровского инспекта — описание, поддомен, участие в бэкапе —
- * живёт здесь же, на контейнере. Отдельной базы у панели нет: снёс контейнер —
- * снёс и запись, docker остаётся единственным источником правды.
- */
-const L = {
-  managed: 'dock.managed',
-  id: 'dock.id',
-  desc: 'dock.desc',
-  domain: 'dock.domain',
-  volume: 'dock.volume',
-  mount: 'dock.mount',
-  backup: 'dock.backup',
-  autostart: 'dock.autostart',
-  containerPort: 'dock.container-port',
-} as const;
+/** Метки, которые compose сам вешает на контейнеры проекта. */
+const COMPOSE_PROJECT = 'com.docker.compose.project';
+const COMPOSE_SERVICE = 'com.docker.compose.service';
 
 const RESTART_NAMES: RestartPolicy[] = ['unless-stopped', 'always', 'on-failure', 'no'];
 
@@ -59,37 +53,84 @@ function lineSink(onLine: (line: string) => void): Writable {
   });
 }
 
-interface AttachedStream {
+interface Attached {
   stream: NodeJS.ReadableStream & { destroy?: () => void };
 }
 
+interface Member {
+  info: Dockerode.ContainerInspectInfo;
+  ref: ContainerRef;
+  project: string | null;
+}
+
+/**
+ * Драйвер настоящего докера.
+ *
+ * Читает состояние через dockerode (инспект, статистика, журналы), а всё, что
+ * меняет мир, отдаёт StackManager — то есть `docker compose` поверх каталога
+ * стека. Разделение намеренное: инспект должен быть быстрым и частым, а
+ * изменения — воспроизводимыми файлами на диске, а не последовательностью
+ * вызовов api, которую потом никто не повторит руками.
+ */
 export class DockerodeDriver implements DockerDriver {
   readonly kind = 'docker' as const;
 
   private readonly docker: Docker;
   private readonly metrics: HostMetrics;
   private ctx!: DriverContext;
-  private readonly attached = new Map<string, AttachedStream>();
+  private readonly attached = new Map<string, Attached>();
   private version = 'unknown';
+  private composeVersion: string | null = null;
   private connected = false;
   private connectError: string | undefined;
 
-  constructor(private readonly config: Config) {
+  constructor(
+    private readonly config: Config,
+    private readonly stacks: StackManager,
+  ) {
     this.docker = new Docker({ socketPath: config.docker.socketPath });
-    this.metrics = new HostMetrics(config.hostRoot);
+    this.metrics = new HostMetrics(config.metrics);
   }
 
   async init(ctx: DriverContext): Promise<void> {
     this.ctx = ctx;
+    await this.connect();
+    if (this.connected) await this.ensureNetwork();
+  }
+
+  /**
+   * Общая сеть, в которую стеки включаются как external. Создаём её сами:
+   * иначе первый же `compose up` упадёт на «network dock not found», если
+   * панель подняли не своим compose-файлом.
+   */
+  private async ensureNetwork(): Promise<void> {
+    const name = this.config.docker.network;
+    if (!name || ['bridge', 'host', 'none'].includes(name)) return;
+    try {
+      const existing = await this.docker.listNetworks({ filters: { name: [name] } });
+      if (existing.some((n) => n.Name === name)) return;
+      await this.docker.createNetwork({ Name: name, Driver: 'bridge' });
+      this.ctx.log('dock', `создана docker-сеть ${name}`, 'ok');
+    } catch (err) {
+      this.ctx.log('dock', `не создать сеть ${name}: ${describe(err)}`, 'warn');
+    }
+  }
+
+  private async connect(): Promise<void> {
     try {
       const v = await this.docker.version();
       this.version = `docker ${v.Version} · api ${v.ApiVersion}`;
       this.connected = true;
-      ctx.log('dock', `подключился к докеру · ${this.version}`, 'ok');
+      this.connectError = undefined;
+      this.ctx.log('dock', `подключился к докеру · ${this.version}`, 'ok');
     } catch (err) {
       this.connected = false;
       this.connectError = err instanceof Error ? err.message : String(err);
-      ctx.log('dock', `докер недоступен на ${this.config.docker.socketPath}: ${this.connectError}`, 'err');
+      this.ctx.log(
+        'dock',
+        `докер недоступен на ${this.config.docker.socketPath}: ${this.connectError}`,
+        'err',
+      );
     }
   }
 
@@ -99,221 +140,208 @@ export class DockerodeDriver implements DockerDriver {
       version: this.version,
       connected: this.connected,
       message: this.connected ? undefined : this.connectError,
+      composeVersion: this.composeVersion ?? undefined,
+      root: this.config.paths.root,
     };
   }
+
+  setComposeVersion(version: string | null): void {
+    this.composeVersion = version;
+  }
+
+  // ── снимок ────────────────────────────────────────────────────────────────
 
   async list(): Promise<Service[]> {
     if (!this.connected) {
-      // сокета нет — отдаём пустой список вместо падения, панель покажет это в шапке
-      await this.retryConnect();
+      await this.connect();
       if (!this.connected) return [];
     }
 
-    const summaries = await this.docker.listContainers({ all: true });
-    const wanted = summaries.filter(
-      (c) => c.Labels?.[L.managed] === 'true' || this.config.docker.adoptForeign,
-    );
+    const [summaries, installed] = await Promise.all([
+      this.docker.listContainers({ all: true }),
+      this.stacks.installed(),
+    ]);
 
-    const services = await Promise.all(
-      wanted.map(async (summary) => {
-        try {
-          return await this.toService(summary);
-        } catch {
-          return null;
-        }
-      }),
-    );
+    const members = await Promise.all(summaries.map((s) => this.member(s)));
+    const alive = members.filter((m): m is Member => m !== null);
 
-    const result = services.filter((s): s is Service => s !== null);
-    result.sort((a, b) => Number(b.managed) - Number(a.managed) || a.name.localeCompare(b.name));
-    this.syncLogStreams(result);
-    return result;
-  }
+    const byProject = new Map<string, Member[]>();
+    const foreign: Member[] = [];
+    const known = new Map(installed.map((s) => [s.id, s]));
 
-  async start(id: string): Promise<void> {
-    const container = await this.require(id);
-    await this.guard(() => container.start(), `не удалось запустить ${id}`);
-    this.ctx.log(id, 'container started', 'ok');
-    this.ctx.changed();
-  }
-
-  async stop(id: string): Promise<void> {
-    const container = await this.require(id);
-    await this.guard(() => container.stop({ t: 10 }), `не удалось остановить ${id}`);
-    this.ctx.log(id, 'container stopped', 'warn');
-    this.ctx.changed();
-  }
-
-  async restart(id: string): Promise<void> {
-    const container = await this.require(id);
-    this.ctx.log(id, 'restarting …', 'warn');
-    await this.guard(() => container.restart({ t: 10 }), `не удалось перезапустить ${id}`);
-    this.ctx.log(id, 'container started', 'ok');
-    this.ctx.changed();
-  }
-
-  /**
-   * Тянет свежий образ и пересоздаёт контейнер на нём: одного `pull` мало,
-   * работающий контейнер продолжит крутиться на старом слое.
-   */
-  async pull(id: string, onProgress: ProgressFn): Promise<void> {
-    const container = await this.require(id);
-    const info = await container.inspect();
-    const image = info.Config.Image;
-
-    this.ctx.log(id, `pulling ${image} …`, 'dim');
-    await this.pullImage(image, (pct, step) => onProgress(Math.round(pct * 0.8), step));
-
-    onProgress(85, 'пересоздаю контейнер на новом образе …');
-    await this.recreate(container, info, {});
-    onProgress(100, 'образ на свежем теге');
-    this.ctx.log(id, 'image up to date', 'ok');
-    this.ctx.changed();
-  }
-
-  async remove(id: string): Promise<void> {
-    const container = await this.require(id);
-    this.detach(id);
-    await this.guard(() => container.remove({ force: true }), `не удалось удалить ${id}`);
-    await fs.rm(path.join(this.config.dataDir, 'services', id), { recursive: true, force: true });
-    this.ctx.log(id, 'container removed · том остался на диске', 'err');
-    this.ctx.changed();
-  }
-
-  async create(spec: CreateServiceSpec, onProgress: ProgressFn): Promise<Service> {
-    if (await this.findContainer(spec.id)) {
-      throw new DriverError(`сервис ${spec.id} уже есть на хосте`, 409, 'already_exists');
+    for (const member of alive) {
+      if (member.project && known.has(member.project)) {
+        const list = byProject.get(member.project) ?? [];
+        list.push(member);
+        byProject.set(member.project, list);
+      } else {
+        foreign.push(member);
+      }
     }
 
-    onProgress(4, 'подтягиваю образ …');
-    await this.pullImage(spec.image, (pct, step) => onProgress(4 + Math.round(pct * 0.55), step));
+    const services: Service[] = [];
 
-    onProgress(62, 'создаю том …');
-    const binds = this.bindsFor(spec.volume, spec.mount);
-
-    onProgress(72, 'поднимаю контейнер …');
-    await this.ensureNetwork();
-    const container = await this.guard(
-      () => this.docker.createContainer(this.containerSpec(spec)),
-      `не удалось создать контейнер ${spec.id}`,
-    );
-    await this.guard(() => container.start(), `контейнер ${spec.id} создан, но не стартовал`);
-
-    onProgress(90, 'записываю compose …');
-    await this.writeCompose(spec, binds);
-
-    onProgress(100, 'готово');
-    this.ctx.log(spec.id, `container created · ${spec.hostPort ? ':' + spec.hostPort : 'без порта'}`, 'ok');
-    this.ctx.changed();
-
-    const summaries = await this.docker.listContainers({ all: true, filters: { id: [container.id] } });
-    const summary = summaries[0];
-    if (!summary) throw new DriverError(`контейнер ${spec.id} исчез сразу после старта`, 500);
-    return this.toService(summary);
-  }
-
-  async applyConfig(id: string, cfg: ServiceConfig, onProgress: ProgressFn): Promise<void> {
-    const container = await this.require(id);
-    const info = await container.inspect();
-
-    onProgress(25, 'останавливаю контейнер …');
-    onProgress(60, 'пересоздаю с новыми параметрами …');
-    await this.recreate(container, info, cfg);
-
-    onProgress(90, 'обновляю compose …');
-    const spec = this.specFromInspect(id, info, cfg);
-    await this.writeCompose(spec, this.bindsFor(spec.volume, spec.mount));
-
-    onProgress(100, 'готово');
-    this.ctx.log(id, 'config applied · recreating container', 'ok');
-    this.ctx.changed();
-  }
-
-  async host(): Promise<HostStats> {
-    return this.metrics.read();
-  }
-
-  async dispose(): Promise<void> {
-    for (const id of [...this.attached.keys()]) this.detach(id);
-  }
-
-  // ── внутреннее ────────────────────────────────────────────────────────────
-
-  private async retryConnect(): Promise<void> {
-    try {
-      const v = await this.docker.version();
-      this.version = `docker ${v.Version} · api ${v.ApiVersion}`;
-      this.connected = true;
-      this.connectError = undefined;
-      this.ctx.log('dock', `докер снова на связи · ${this.version}`, 'ok');
-    } catch (err) {
-      this.connectError = err instanceof Error ? err.message : String(err);
+    for (const stack of installed) {
+      services.push(await this.stackService(stack, byProject.get(stack.id) ?? []));
     }
+
+    if (this.config.docker.adoptForeign) {
+      for (const member of foreign) {
+        services.push(this.foreignService(member));
+      }
+    }
+
+    services.sort(
+      (a, b) => Number(b.kind === 'stack') - Number(a.kind === 'stack') || a.name.localeCompare(b.name),
+    );
+
+    this.syncLogStreams(services);
+    return services;
   }
 
-  private async findContainer(id: string): Promise<Dockerode.Container | null> {
-    const byLabel = await this.docker.listContainers({
-      all: true,
-      filters: { label: [`${L.id}=${id}`] },
-    });
-    if (byLabel[0]) return this.docker.getContainer(byLabel[0].Id);
+  /** Стек как одна карточка: статусы и ресурсы участников свёрнуты вместе. */
+  private async stackService(stack: InstalledStack, members: Member[]): Promise<Service> {
+    const manifest = stack.manifest;
+    const primaryName = manifest.primary ?? members[0]?.ref.service ?? '';
+    const primary = members.find((m) => m.ref.service === primaryName) ?? members[0] ?? null;
 
-    const byName = await this.docker.listContainers({ all: true, filters: { name: [id] } });
-    const exact = byName.find((c) => c.Names.some((n) => n.replace(/^\//, '') === id));
-    return exact ? this.docker.getContainer(exact.Id) : null;
-  }
+    const containers = members.map((m) => m.ref).sort((a, b) => a.service.localeCompare(b.service));
+    const running = containers.filter((c) => c.status === 'running').length;
 
-  private async require(id: string): Promise<Dockerode.Container> {
-    const container = await this.findContainer(id);
-    if (!container) throw new NotFoundError(id);
-    return container;
-  }
+    let status: ServiceStatus;
+    if (!containers.length) status = 'stopped';
+    else if (containers.some((c) => c.status === 'updating')) status = 'updating';
+    else if (containers.some((c) => c.status === 'error')) status = 'error';
+    else if (running === containers.length) status = 'running';
+    else if (running === 0) status = 'stopped';
+    else status = 'error';
 
-  private async toService(summary: Dockerode.ContainerInfo): Promise<Service> {
-    const container = this.docker.getContainer(summary.Id);
-    const info = await container.inspect();
-    const labels = info.Config.Labels ?? {};
-    const managed = labels[L.managed] === 'true';
-    const name = labels[L.id] ?? info.Name.replace(/^\//, '');
+    const cpu = clampPct(containers.reduce((sum, c) => sum + c.cpu, 0));
+    const mem = clampPct(containers.reduce((sum, c) => sum + c.mem, 0));
+    const memBytes = members.reduce((sum, m) => sum + (m.info.State.Running ? this.memOf(m) : 0), 0);
 
-    const stats = info.State.Running ? await this.readStats(container) : { cpu: 0, mem: 0, memBytes: 0 };
+    const oldest = members
+      .filter((m) => m.info.State.Running && m.info.State.StartedAt)
+      .map((m) => Date.parse(m.info.State.StartedAt))
+      .filter((t) => Number.isFinite(t))
+      .sort((a, b) => a - b)[0];
 
-    const bind = (info.HostConfig.Binds ?? [])[0];
-    const bindSource = bind ? (bind.split(':')[0] as string) : null;
-    const volumeLabel = labels[L.volume] ?? (bindSource ? bindSource.replace(/^\/+/, '') : '—');
-
-    const hostPort = this.firstHostPort(info);
-    const startedAt = info.State.StartedAt ? Date.parse(info.State.StartedAt) : NaN;
-    const uptimeSeconds = info.State.Running && Number.isFinite(startedAt)
-      ? (Date.now() - startedAt) / 1000
-      : 0;
+    const domainValue = stack.values.DOMAIN ?? stack.values.SUBDOMAIN;
 
     return {
-      id: name,
-      name,
-      desc: labels[L.desc] ?? this.describeImage(info.Config.Image),
-      port: hostPort ? `:${hostPort}` : '—',
-      status: this.statusOf(info),
-      cpu: clampPct(stats.cpu),
-      mem: clampPct(stats.mem),
-      vol: bindSource ? await volumeFillPct(bindSource) : 0,
-      usage: info.State.Running ? usageLabel(stats.cpu, stats.memBytes) : '— / —',
-      uptime: info.State.Running ? humanDuration(uptimeSeconds) : '—',
-      image: info.Config.Image,
-      domain: labels[L.domain] ?? '—',
-      volume: volumeLabel,
-      restart: toRestartPolicy(info.HostConfig.RestartPolicy?.Name),
-      autostart: labels[L.autostart]
-        ? labels[L.autostart] === 'true'
-        : toRestartPolicy(info.HostConfig.RestartPolicy?.Name) !== 'no',
-      backup: labels[L.backup] === 'true',
-      env: stringifyEnv(info.Config.Env),
-      containerId: info.Id,
-      managed,
+      kind: 'stack',
+      stackId: stack.id,
+      version: manifest.version,
+      containers,
+      id: stack.id,
+      name: manifest.name,
+      desc: manifest.summary || `стек из ${containers.length || this.expected(stack)} контейнеров`,
+      port: primary?.ref.port ?? '—',
+      status,
+      cpu,
+      mem,
+      vol: await volumeFillPct(stack.dir),
+      usage: running ? usageLabel(cpu, memBytes) : '— / —',
+      uptime: oldest ? humanDuration((Date.now() - oldest) / 1000) : '—',
+      image: primary?.ref.image ?? '—',
+      domain: domainValue ? String(domainValue) : '—',
+      volume: stack.dir,
+      restart: toRestartPolicy(primary?.info.HostConfig.RestartPolicy?.Name),
+      autostart: toRestartPolicy(primary?.info.HostConfig.RestartPolicy?.Name) !== 'no',
+      backup: stack.values.BACKUP === 'true' || stack.values.BACKUP === true,
+      env: this.envPreview(stack),
+      containerId: primary?.info.Id ?? null,
+      managed: true,
     };
   }
 
-  private statusOf(info: Dockerode.ContainerInspectInfo): Service['status'] {
+  /** Контейнер, поднятый мимо панели: показываем, но не трогаем его файлы. */
+  private foreignService(member: Member): Service {
+    const info = member.info;
+    const ref = member.ref;
+    return {
+      kind: 'container',
+      stackId: null,
+      version: null,
+      containers: [ref],
+      id: ref.name,
+      name: ref.name,
+      desc: member.project ? `чужой compose-проект ${member.project}` : 'контейнер поднят не через dock',
+      port: ref.port,
+      status: ref.status,
+      cpu: ref.cpu,
+      mem: ref.mem,
+      vol: 0,
+      usage: ref.usage,
+      uptime: ref.uptime,
+      image: ref.image,
+      domain: '—',
+      volume: (info.HostConfig.Binds ?? [])[0]?.split(':')[0] ?? '—',
+      restart: toRestartPolicy(info.HostConfig.RestartPolicy?.Name),
+      autostart: toRestartPolicy(info.HostConfig.RestartPolicy?.Name) !== 'no',
+      backup: false,
+      env: (info.Config.Env ?? []).join('\n'),
+      containerId: info.Id,
+      managed: false,
+    };
+  }
+
+  private expected(stack: InstalledStack): number {
+    const compose = stack.manifest.compose;
+    if (typeof compose === 'string') return 1;
+    const services = (compose as { services?: Record<string, unknown> }).services;
+    return services ? Object.keys(services).length : 1;
+  }
+
+  /** Значения инпутов в виде KEY=value — вкладка «конфиг» показывает их как есть. */
+  private envPreview(stack: InstalledStack): string {
+    return Object.entries(stack.values)
+      .filter(([key]) => !key.startsWith('DOCK_'))
+      .map(([key, value]) => `${key}=${String(value)}`)
+      .join('\n');
+  }
+
+  private async member(summary: Dockerode.ContainerInfo): Promise<Member | null> {
+    try {
+      const container = this.docker.getContainer(summary.Id);
+      const info = await container.inspect();
+      const labels = info.Config.Labels ?? {};
+      const stats = info.State.Running
+        ? await this.readStats(container)
+        : { cpu: 0, mem: 0, memBytes: 0 };
+
+      const startedAt = info.State.StartedAt ? Date.parse(info.State.StartedAt) : NaN;
+      const uptimeSeconds =
+        info.State.Running && Number.isFinite(startedAt) ? (Date.now() - startedAt) / 1000 : 0;
+      const hostPort = this.firstHostPort(info);
+
+      const ref: ContainerRef = {
+        id: info.Id,
+        service: labels[COMPOSE_SERVICE] ?? info.Name.replace(/^\//, ''),
+        name: info.Name.replace(/^\//, ''),
+        image: info.Config.Image,
+        status: this.statusOf(info),
+        cpu: clampPct(stats.cpu),
+        mem: clampPct(stats.mem),
+        usage: info.State.Running ? usageLabel(stats.cpu, stats.memBytes) : '— / —',
+        uptime: info.State.Running ? humanDuration(uptimeSeconds) : '—',
+        port: hostPort ? `:${hostPort}` : '—',
+      };
+
+      this.memCache.set(info.Id, stats.memBytes);
+      return { info, ref, project: labels[COMPOSE_PROJECT] ?? null };
+    } catch {
+      return null;
+    }
+  }
+
+  private readonly memCache = new Map<string, number>();
+
+  private memOf(member: Member): number {
+    return this.memCache.get(member.info.Id) ?? 0;
+  }
+
+  private statusOf(info: Dockerode.ContainerInspectInfo): ServiceStatus {
     const state = info.State;
     if (state.Restarting) return 'updating';
     if (state.Running) return 'running';
@@ -321,14 +349,11 @@ export class DockerodeDriver implements DockerDriver {
     return 'stopped';
   }
 
-  private describeImage(image: string): string {
-    const short = image.split('/').pop() ?? image;
-    return `образ ${short}`;
-  }
-
   private firstHostPort(info: Dockerode.ContainerInspectInfo): string | null {
     const bindings = info.HostConfig.PortBindings ?? info.NetworkSettings.Ports ?? {};
-    for (const value of Object.values(bindings as Record<string, Array<{ HostPort?: string }> | null>)) {
+    for (const value of Object.values(
+      bindings as Record<string, Array<{ HostPort?: string }> | null>,
+    )) {
       const hostPort = value?.[0]?.HostPort;
       if (hostPort) return hostPort;
     }
@@ -344,8 +369,7 @@ export class DockerodeDriver implements DockerDriver {
         raw.cpu_stats.cpu_usage.total_usage - (raw.precpu_stats?.cpu_usage?.total_usage ?? 0);
       const systemDelta =
         (raw.cpu_stats.system_cpu_usage ?? 0) - (raw.precpu_stats?.system_cpu_usage ?? 0);
-      const cores =
-        raw.cpu_stats.online_cpus ?? raw.cpu_stats.cpu_usage.percpu_usage?.length ?? 1;
+      const cores = raw.cpu_stats.online_cpus ?? raw.cpu_stats.cpu_usage.percpu_usage?.length ?? 1;
       const cpu = systemDelta > 0 && cpuDelta > 0 ? (cpuDelta / systemDelta) * cores * 100 : 0;
 
       const cache = (raw.memory_stats.stats as Record<string, number> | undefined)?.cache ?? 0;
@@ -361,23 +385,26 @@ export class DockerodeDriver implements DockerDriver {
 
   // ── журнал ────────────────────────────────────────────────────────────────
 
-  /** Держит подписку на stdout/stderr ровно тех контейнеров, что сейчас работают. */
+  /** Подписка на stdout/stderr работающих контейнеров, помеченная id стека. */
   private syncLogStreams(services: Service[]): void {
-    const running = new Set(services.filter((s) => s.status === 'running').map((s) => s.id));
+    const wanted = new Map<string, string>();
+    for (const service of services) {
+      for (const container of service.containers) {
+        if (container.status === 'running') wanted.set(container.id, service.id);
+      }
+    }
 
     for (const id of [...this.attached.keys()]) {
-      if (!running.has(id)) this.detach(id);
+      if (!wanted.has(id)) this.detach(id);
     }
-    for (const svc of services) {
-      if (svc.status !== 'running' || this.attached.has(svc.id) || !svc.containerId) continue;
-      void this.attach(svc.id, svc.containerId);
+    for (const [containerId, serviceId] of wanted) {
+      if (!this.attached.has(containerId)) void this.attach(containerId, serviceId);
     }
   }
 
-  private async attach(id: string, containerId: string): Promise<void> {
-    if (this.attached.has(id)) return;
-    // резервируем место сразу, чтобы параллельный опрос не подписался вторым
-    this.attached.set(id, { stream: new Writable() as never });
+  private async attach(containerId: string, serviceId: string): Promise<void> {
+    if (this.attached.has(containerId)) return;
+    this.attached.set(containerId, { stream: new Writable() as never });
     try {
       const container = this.docker.getContainer(containerId);
       const info = await container.inspect();
@@ -388,7 +415,7 @@ export class DockerodeDriver implements DockerDriver {
         tail: 0,
       })) as unknown as NodeJS.ReadableStream & { destroy?: () => void };
 
-      const sink = lineSink((line) => this.ctx.log(id, line, levelFor(line)));
+      const sink = lineSink((line) => this.ctx.log(serviceId, line, levelFor(line)));
 
       if (info.Config.Tty) {
         stream.pipe(sink);
@@ -397,17 +424,17 @@ export class DockerodeDriver implements DockerDriver {
         this.docker.modem.demuxStream(stream, sink, sink);
       }
 
-      stream.on('end', () => this.detach(id));
-      stream.on('error', () => this.detach(id));
-      this.attached.set(id, { stream });
+      stream.on('end', () => this.detach(containerId));
+      stream.on('error', () => this.detach(containerId));
+      this.attached.set(containerId, { stream });
     } catch {
-      this.attached.delete(id);
+      this.attached.delete(containerId);
     }
   }
 
-  private detach(id: string): void {
-    const attached = this.attached.get(id);
-    this.attached.delete(id);
+  private detach(containerId: string): void {
+    const attached = this.attached.get(containerId);
+    this.attached.delete(containerId);
     try {
       attached?.stream.destroy?.();
     } catch {
@@ -415,182 +442,96 @@ export class DockerodeDriver implements DockerDriver {
     }
   }
 
-  // ── создание и пересоздание ───────────────────────────────────────────────
+  // ── действия ──────────────────────────────────────────────────────────────
 
-  private bindsFor(volume: string, mount: string): string[] {
-    if (!volume || volume === '—' || !mount) return [];
-    const source = path.posix.join(this.config.docker.hostVolumeRoot.replace(/\\/g, '/'), volume);
-    return [`${source}:${mount}`];
-  }
-
-  private containerSpec(spec: CreateServiceSpec): Dockerode.ContainerCreateOptions {
-    const settings = this.ctx.settings();
-    const env = { TZ: settings.tz, ...parseEnv(spec.env) };
-    const exposed: Record<string, Record<string, never>> = {};
-    const bindings: Record<string, Array<{ HostPort: string }>> = {};
-
-    if (spec.hostPort && spec.containerPort) {
-      const key = `${spec.containerPort}/tcp`;
-      exposed[key] = {};
-      bindings[key] = [{ HostPort: spec.hostPort }];
+  async start(id: string, progress?: ProgressFn): Promise<void> {
+    if (await this.stacks.exists(id)) {
+      await this.stacks.start(id, progress);
+    } else {
+      await this.container(id, (c) => c.start(), `не удалось запустить ${id}`);
     }
-
-    return {
-      name: spec.id,
-      Image: spec.image,
-      Env: Object.entries(env).map(([k, v]) => `${k}=${v}`),
-      ExposedPorts: exposed,
-      Labels: {
-        [L.managed]: 'true',
-        [L.id]: spec.id,
-        [L.desc]: spec.desc,
-        [L.domain]: spec.domain || '—',
-        [L.volume]: spec.volume,
-        [L.mount]: spec.mount,
-        [L.backup]: String(spec.backup),
-        [L.autostart]: String(spec.autostart),
-        [L.containerPort]: spec.containerPort,
-      },
-      HostConfig: {
-        Binds: this.bindsFor(spec.volume, spec.mount),
-        PortBindings: bindings,
-        RestartPolicy: { Name: spec.autostart ? spec.restart : 'no' },
-        NetworkMode: this.config.docker.network,
-      },
-    };
+    this.ctx.changed();
   }
 
-  /** Собирает spec из текущего инспекта, накладывая правки с экрана конфига. */
-  private specFromInspect(
-    id: string,
-    info: Dockerode.ContainerInspectInfo,
-    cfg: Partial<ServiceConfig>,
-  ): CreateServiceSpec {
-    const labels = info.Config.Labels ?? {};
-    const containerPort =
-      labels[L.containerPort] ??
-      Object.keys(info.Config.ExposedPorts ?? {})[0]?.split('/')[0] ??
-      '';
-
-    return {
-      id,
-      name: id,
-      desc: labels[L.desc] ?? this.describeImage(info.Config.Image),
-      image: info.Config.Image,
-      hostPort: cfg.port ?? this.firstHostPort(info) ?? '',
-      containerPort,
-      volume: cfg.volume ?? labels[L.volume] ?? '',
-      mount: labels[L.mount] ?? '',
-      domain: cfg.domain ?? labels[L.domain] ?? '—',
-      restart: cfg.restart ?? toRestartPolicy(info.HostConfig.RestartPolicy?.Name),
-      env: cfg.env ?? stringifyEnv(info.Config.Env),
-      autostart: cfg.autostart ?? labels[L.autostart] !== 'false',
-      backup: cfg.backup ?? labels[L.backup] === 'true',
-    };
-  }
-
-  /**
-   * Снимает контейнер и поднимает новый с тем же именем. Том не трогается —
-   * данные переживают и смену образа, и правку конфига.
-   */
-  private async recreate(
-    container: Dockerode.Container,
-    info: Dockerode.ContainerInspectInfo,
-    cfg: Partial<ServiceConfig>,
-  ): Promise<void> {
-    const id = (info.Config.Labels ?? {})[L.id] ?? info.Name.replace(/^\//, '');
-    const wasRunning = info.State.Running;
-    const spec = this.specFromInspect(id, info, cfg);
-
-    this.detach(id);
-    await this.guard(() => container.remove({ force: true }), `не удалось снять ${id}`);
-    await this.ensureNetwork();
-    const next = await this.guard(
-      () => this.docker.createContainer(this.containerSpec(spec)),
-      `не удалось пересоздать ${id}`,
-    );
-    if (wasRunning) {
-      await this.guard(() => next.start(), `${id} пересоздан, но не стартовал`);
+  async stop(id: string, progress?: ProgressFn): Promise<void> {
+    if (await this.stacks.exists(id)) {
+      await this.stacks.stop(id, progress);
+    } else {
+      await this.container(id, (c) => c.stop({ t: 10 }), `не удалось остановить ${id}`);
     }
+    this.ctx.changed();
   }
 
-  private async ensureNetwork(): Promise<void> {
-    const name = this.config.docker.network;
-    if (!name || name === 'bridge' || name === 'host' || name === 'none') return;
-    const existing = await this.docker.listNetworks({ filters: { name: [name] } });
-    if (existing.some((n) => n.Name === name)) return;
-    await this.guard(
-      () => this.docker.createNetwork({ Name: name, Driver: 'bridge' }),
-      `не удалось создать сеть ${name}`,
-    );
-    this.ctx.log('dock', `создана docker-сеть ${name}`, 'ok');
+  async restart(id: string, progress?: ProgressFn): Promise<void> {
+    if (await this.stacks.exists(id)) {
+      await this.stacks.restart(id, progress);
+    } else {
+      await this.container(id, (c) => c.restart({ t: 10 }), `не удалось перезапустить ${id}`);
+    }
+    this.ctx.changed();
   }
 
-  private pullImage(image: string, onProgress: ProgressFn): Promise<void> {
-    return new Promise((resolve, reject) => {
-      this.docker.pull(image, {}, (err: Error | null, stream?: NodeJS.ReadableStream) => {
-        if (err || !stream) {
-          reject(new DriverError(`не удалось скачать образ ${image}: ${err?.message ?? 'нет потока'}`, 502));
-          return;
-        }
-        const layers = new Map<string, { current: number; total: number }>();
-        this.docker.modem.followProgress(
-          stream,
-          (doneErr: Error | null) => {
-            if (doneErr) {
-              reject(new DriverError(`образ ${image} не скачался: ${doneErr.message}`, 502));
-              return;
-            }
-            onProgress(100, 'образ скачан');
-            resolve();
-          },
-          (event: { id?: string; status?: string; progressDetail?: { current?: number; total?: number } }) => {
-            if (event.id && event.progressDetail?.total) {
-              layers.set(event.id, {
-                current: event.progressDetail.current ?? 0,
-                total: event.progressDetail.total,
-              });
-            }
-            let current = 0;
-            let total = 0;
-            for (const layer of layers.values()) {
-              current += layer.current;
-              total += layer.total;
-            }
-            const pct = total > 0 ? Math.round((current / total) * 100) : 0;
-            onProgress(pct, event.status ? `${event.status} …` : 'тяну слои …');
-          },
-        );
-      });
-    });
+  async pull(id: string, progress: ProgressFn): Promise<void> {
+    if (!(await this.stacks.exists(id))) {
+      throw new DriverError(
+        `${id} поднят не через dock — обновлять его образ панель не станет`,
+        409,
+        'not_managed',
+      );
+    }
+    await this.stacks.pull(id, progress);
+    this.ctx.changed();
   }
 
-  private async writeCompose(spec: CreateServiceSpec, binds: string[]): Promise<void> {
-    const dir = path.join(this.config.dataDir, 'services', spec.id);
-    await fs.mkdir(dir, { recursive: true });
-    const bind = binds[0]?.split(':')[0] ?? '';
-    const yaml = composeYaml({
-      id: spec.id,
-      image: spec.image,
-      hostPort: spec.hostPort,
-      containerPort: spec.containerPort,
-      volume: bind,
-      mount: spec.mount,
-      restart: spec.autostart ? spec.restart : 'no',
-      env: spec.env,
-      network: this.config.docker.network,
-    });
-    await fs.writeFile(path.join(dir, 'compose.yml'), yaml + '\n', 'utf8');
+  async installStack(stackId: string, values: StackValues, progress: ProgressFn): Promise<void> {
+    await this.stacks.install(stackId, values, progress);
+    this.ctx.changed();
   }
 
-  /** Превращает ошибку демона в DriverError с человеческим текстом. */
-  private async guard<T>(fn: () => Promise<T>, message: string): Promise<T> {
+  async applyStackValues(id: string, values: StackValues, progress: ProgressFn): Promise<void> {
+    await this.stacks.applyValues(id, values, progress);
+    this.ctx.changed();
+  }
+
+  async removeStack(id: string, progress: ProgressFn, purge = false): Promise<void> {
+    if (!(await this.stacks.exists(id))) {
+      // чужой контейнер удаляем напрямую: своего каталога стека у него нет
+      await this.container(id, (c) => c.remove({ force: true }), `не удалось удалить ${id}`);
+    } else {
+      await this.stacks.remove(id, progress, purge);
+    }
+    this.ctx.changed();
+  }
+
+  async host(): Promise<HostStats> {
+    return this.metrics.read();
+  }
+
+  async dispose(): Promise<void> {
+    for (const id of [...this.attached.keys()]) this.detach(id);
+  }
+
+  private async container<T>(
+    name: string,
+    fn: (container: Dockerode.Container) => Promise<T>,
+    message: string,
+  ): Promise<T> {
+    const list = await this.docker.listContainers({ all: true, filters: { name: [name] } });
+    const exact = list.find((c) => c.Names.some((n) => n.replace(/^\//, '') === name));
+    if (!exact) throw new NotFoundError(name);
     try {
-      return await fn();
+      return await fn(this.docker.getContainer(exact.Id));
     } catch (err) {
       const raw = err as { statusCode?: number; message?: string; json?: { message?: string } };
-      const detail = raw.json?.message ?? raw.message ?? String(err);
-      throw new DriverError(`${message}: ${detail}`, raw.statusCode ?? 500, 'docker_error');
+      throw new DriverError(
+        `${message}: ${raw.json?.message ?? raw.message ?? String(err)}`,
+        raw.statusCode ?? 500,
+        'docker_error',
+      );
     }
   }
+}
+
+function describe(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
 }

@@ -1,25 +1,18 @@
-import {
-  createContext,
-  useCallback,
-  useContext,
-  useEffect,
-  useMemo,
-  useReducer,
-  useRef,
-} from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useReducer, useRef } from 'react';
 import type { ReactNode } from 'react';
 import type {
   BackupInfo,
-  CatalogItem,
+  ConsoleResult,
   DriverInfo,
   HostStats,
-  InstallRequest,
   Job,
   LogEntry,
+  RegistryEntry,
+  RegistrySource,
   ServerEvent,
   Service,
-  ServiceConfig,
   Settings,
+  StackValues,
 } from '@dock/shared';
 import type { Tone } from '@dock/ui';
 import { api, ApiError } from '../api/client';
@@ -35,12 +28,14 @@ export interface ToastItem {
 const EMPTY_HOST: HostStats = {
   cpu: '—',
   cpuPct: 0,
+  cpuCores: 0,
   ram: '—',
   ramPct: 0,
   disk: '—',
   diskPct: 0,
   uptime: '—',
   uptimeSeconds: 0,
+  truthful: true,
 };
 
 const EMPTY_SETTINGS: Settings = {
@@ -68,7 +63,8 @@ interface State {
   driver: DriverInfo | null;
   services: Service[];
   host: HostStats;
-  catalog: CatalogItem[];
+  catalog: RegistryEntry[];
+  catalogSource: RegistrySource | null;
   logs: LogEntry[];
   /** Черновик настроек: то, что сейчас в полях формы. */
   settings: Settings;
@@ -82,7 +78,6 @@ interface State {
 }
 
 type Action =
-  | { type: 'ready'; catalog: CatalogItem[] }
   | { type: 'connected'; connected: boolean }
   | { type: 'server'; event: ServerEvent }
   | { type: 'draft'; patch: Partial<Settings> }
@@ -96,9 +91,6 @@ const LOG_LIMIT = 400;
 
 function reduce(state: State, action: Action): State {
   switch (action.type) {
-    case 'ready':
-      return { ...state, ready: true, catalog: action.catalog };
-
     case 'connected':
       return { ...state, connected: action.connected };
 
@@ -108,11 +100,13 @@ function reduce(state: State, action: Action): State {
         case 'hello':
           return { ...state, driver: event.driver };
         case 'services':
-          return { ...state, services: event.services };
+          return { ...state, services: event.services, ready: true };
         case 'host':
           return { ...state, host: event.host };
         case 'backup':
           return { ...state, backup: event.backup };
+        case 'catalog':
+          return { ...state, catalog: event.catalog, catalogSource: event.source };
         case 'settings': {
           // правки пользователя не затираем: обновляем только базу отката
           const dirty = JSON.stringify(state.settings) !== JSON.stringify(state.saved);
@@ -167,6 +161,7 @@ const INITIAL: State = {
   services: [],
   host: EMPTY_HOST,
   catalog: [],
+  catalogSource: null,
   logs: [],
   settings: EMPTY_SETTINGS,
   saved: EMPTY_SETTINGS,
@@ -184,10 +179,11 @@ export interface DockActions {
   toggleService(svc: Service): Promise<void>;
   restartService(svc: Service): Promise<void>;
   pullService(svc: Service): Promise<void>;
-  removeService(svc: Service): Promise<void>;
-  saveConfig(id: string, config: Partial<ServiceConfig>): Promise<void>;
-  install(req: InstallRequest): Promise<Job | null>;
+  removeService(svc: Service, purge: boolean): Promise<void>;
+  saveValues(id: string, values: StackValues): Promise<void>;
+  install(stackId: string, values: StackValues): Promise<Job | null>;
   pullAll(): Promise<void>;
+  refreshCatalog(): Promise<void>;
 
   clearLogs(): Promise<void>;
 
@@ -198,13 +194,13 @@ export interface DockActions {
   runBackup(): Promise<void>;
   restartDaemon(): Promise<void>;
 
-  runCommand(cmd: string): Promise<import('@dock/shared').ConsoleResult | null>;
+  runCommand(cmd: string): Promise<ConsoleResult | null>;
 }
 
 interface DockValue extends State {
   dirty: boolean;
   actions: DockActions;
-  /** Активная задача по цели (сервис или элемент каталога), если она есть. */
+  /** Активная задача по цели (стеку), если она есть. */
   jobFor(target: string): Job | undefined;
 }
 
@@ -235,24 +231,12 @@ export function DockProvider({ children }: { children: ReactNode }) {
   );
 
   useEffect(() => {
-    let alive = true;
-
-    void (async () => {
-      try {
-        const catalog = await api.catalog();
-        if (alive) dispatch({ type: 'ready', catalog });
-      } catch {
-        if (alive) dispatch({ type: 'ready', catalog: [] });
-      }
-    })();
-
     const disconnect = connectStream(
       (event) => dispatch({ type: 'server', event }),
       (connected) => dispatch({ type: 'connected', connected }),
     );
 
     return () => {
-      alive = false;
       disconnect();
       for (const t of timers.current) window.clearTimeout(t);
       timers.current = [];
@@ -269,10 +253,10 @@ export function DockProvider({ children }: { children: ReactNode }) {
         guard('не вышло', async () => {
           if (svc.status === 'stopped' || svc.status === 'error') {
             await api.start(svc.id);
-            toast('запущено', `${svc.name} поднят`, 'ok');
+            toast('запускаю', `${svc.name} поднимается`, 'ok');
           } else {
             await api.stop(svc.id);
-            toast('остановлено', `${svc.name} выключен`, 'warn');
+            toast('останавливаю', `${svc.name} выключается`, 'warn');
           }
         }),
 
@@ -283,26 +267,30 @@ export function DockProvider({ children }: { children: ReactNode }) {
         }),
 
       pullService: (svc) =>
-        guard('образ не обновился', async () => {
+        guard('образы не обновились', async () => {
           await api.pull(svc.id);
-          toast('обновление образа', `тяну свежий тег для ${svc.name}`, 'ok');
+          toast('обновление образов', `тяну свежие теги для ${svc.name}`, 'ok');
         }),
 
-      removeService: (svc) =>
+      removeService: (svc, purge) =>
         guard('удалить не вышло', async () => {
-          await api.remove(svc.id);
-          toast('удалено', `${svc.name} снят с хоста`, 'warn');
+          await api.remove(svc.id, purge);
+          toast(
+            'удаляю',
+            purge ? `${svc.name} снимается вместе с данными` : `${svc.name} снимается, данные остаются`,
+            'warn',
+          );
         }),
 
-      saveConfig: (id, config) =>
+      saveValues: (id, values) =>
         guard('конфиг не применился', async () => {
-          await api.saveConfig(id, config);
-          toast('конфиг применён', `${id} перезапущен с новыми параметрами`, 'ok');
+          await api.saveValues(id, values);
+          toast('конфиг применён', `${id} пересоздаётся с новыми параметрами`, 'ok');
         }),
 
-      install: async (req) => {
+      install: async (stackId, values) => {
         try {
-          const { job } = await api.install(req);
+          const { job } = await api.install(stackId, values);
           return job;
         } catch (err) {
           const message = err instanceof ApiError ? err.message : String(err);
@@ -314,7 +302,13 @@ export function DockProvider({ children }: { children: ReactNode }) {
       pullAll: () =>
         guard('обновление не пошло', async () => {
           await api.pullAll();
-          toast('обновление', 'проверяю теги всех сервисов', 'ok');
+          toast('обновление', 'проверяю теги всех стеков', 'ok');
+        }),
+
+      refreshCatalog: () =>
+        guard('реестр не обновился', async () => {
+          const res = await api.refreshCatalog();
+          toast('реестр обновлён', `${res.catalog.length} стеков`, 'ok');
         }),
 
       clearLogs: () =>

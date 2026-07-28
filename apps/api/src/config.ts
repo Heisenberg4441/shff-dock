@@ -1,3 +1,4 @@
+import fs from 'node:fs';
 import path from 'node:path';
 
 function str(name: string, fallback: string): string {
@@ -16,35 +17,89 @@ function bool(name: string, fallback: boolean): boolean {
   return v === '1' || v.toLowerCase() === 'true' || v.toLowerCase() === 'yes';
 }
 
+/**
+ * Первый существующий путь из списка. Нужен для /host/proc и rootfs: если хост
+ * примонтирован — читаем его, если нет — молча живём с тем, что видно изнутри.
+ */
+function firstExisting(candidates: string[], fallback: string): string {
+  for (const candidate of candidates) {
+    try {
+      if (fs.existsSync(candidate)) return candidate;
+    } catch {
+      /* нет доступа — пробуем следующий */
+    }
+  }
+  return fallback;
+}
+
 const driverEnv = str('DOCK_DRIVER', 'mock').toLowerCase();
 
+/**
+ * Корень раскладки. Всё, что панель создаёт на хосте, лежит здесь и нигде
+ * больше: стеки, кэш реестра, конфиг панели, бэкапы. Путь одинаков внутри
+ * контейнера панели и снаружи — только поэтому bind-монтирования, которые
+ * ядро пишет в compose-файлы, разрешаются на хосте в те же каталоги.
+ */
+const dockRoot = path.posix.normalize(str('DOCK_ROOT', '/home/dock'));
+
+const procRoot = firstExisting([str('DOCK_PROC_ROOT', '/host/proc'), '/proc'], '/proc');
+const sysRoot = firstExisting([str('DOCK_SYS_ROOT', '/host/sys'), '/sys'], '/sys');
+const rootfs = firstExisting([str('DOCK_ROOTFS', '/host/rootfs'), '/'], '/');
+
 export const config = {
-  /** Порт панели. По умолчанию совпадает с panelPort в настройках. */
   port: int('PORT', 7788),
   host: str('HOST', '0.0.0.0'),
 
   /** mock — синтетический хост, docker — настоящий демон на сокете. */
   driver: (driverEnv === 'docker' ? 'docker' : 'mock') as 'mock' | 'docker',
 
-  /** Куда ядро пишет dock.yml, compose-файлы и метку последнего бэкапа. */
-  dataDir: path.resolve(str('DOCK_DATA_DIR', path.join(process.cwd(), 'data'))),
+  paths: {
+    root: dockRoot,
+    /** /home/dock/stacks/<id> — по каталогу на стек. */
+    stacks: path.posix.join(dockRoot, 'stacks'),
+    /** Кэш скачанных манифестов реестра. */
+    registry: path.posix.join(dockRoot, 'registry'),
+    backups: path.posix.join(dockRoot, 'backups'),
+    /** dock.yml и state.json лежат прямо в корне — их видно сразу. */
+    config: dockRoot,
+  },
+
+  /** Реестр, вшитый в образ: работает без сети и без гитхаба. */
+  bundledRegistry: str('DOCK_BUNDLED_REGISTRY', path.resolve(__dirname, '../../../registry')),
+
+  /**
+   * Репозиторий с готовыми стеками. Формат:
+   * https://raw.githubusercontent.com/<owner>/<repo>/<ref>
+   * Пусто — панель живёт на вшитом реестре.
+   */
+  registryUrl: str('DOCK_REGISTRY_URL', ''),
+  registryTtlMinutes: int('DOCK_REGISTRY_TTL', 60),
 
   docker: {
     socketPath: str('DOCK_DOCKER_SOCKET', '/var/run/docker.sock'),
-    /**
-     * Корень на хосте, куда ложатся тома сервисов. Внутри контейнера панели
-     * этот путь может отличаться, поэтому bind монтируется по hostVolumeRoot,
-     * а панель читает его содержимое по volumeRoot.
-     */
-    hostVolumeRoot: str('DOCK_HOST_VOLUME_ROOT', '/srv'),
-    /** Docker-сеть, в которую подключаются созданные панелью контейнеры. */
+    /** Docker-сеть, в которую подключаются стеки. */
     network: str('DOCK_NETWORK', 'dock'),
     /** Показывать ли контейнеры, созданные не через dock. */
     adoptForeign: bool('DOCK_ADOPT_FOREIGN', true),
+    /** Под каким uid:gid создавать каталоги данных стеков. */
+    puid: int('DOCK_PUID', 1000),
+    pgid: int('DOCK_PGID', 1000),
+    composeTimeoutMs: int('DOCK_COMPOSE_TIMEOUT', 15 * 60 * 1000),
   },
 
-  /** Точка монтирования корня хоста — с неё считается свободное место. */
-  hostRoot: str('DOCK_HOST_ROOT', '/'),
+  /**
+   * Откуда снимаются метрики. Внутри контейнера /proc и / показывают то, что
+   * выделено докеру, поэтому compose монтирует хостовые в /host/*. Если их нет,
+   * ядро честно пометит метрики как неполные, а не соврёт цифрами.
+   */
+  metrics: {
+    procRoot,
+    sysRoot,
+    rootfs,
+    hostMounted: procRoot !== '/proc' || rootfs !== '/',
+    /** Место считаем по разделу, где лежат стеки, — он и кончается первым. */
+    diskPath: dockRoot,
+  },
 
   /** Сколько строк журнала панель держит в памяти. */
   logBuffer: int('DOCK_LOG_BUFFER', 500),

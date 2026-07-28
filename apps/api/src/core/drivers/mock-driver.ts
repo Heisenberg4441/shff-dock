@@ -1,169 +1,96 @@
-import type { DriverInfo, HostStats, Service, ServiceConfig } from '@dock/shared';
-import type { CreateServiceSpec, DockerDriver, DriverContext, ProgressFn } from '../driver';
-import { NotFoundError } from '../driver';
-import { clampPct, humanDuration, usageLabel } from '../format';
+import path from 'node:path';
+import { parse } from 'yaml';
+import type {
+  ContainerRef,
+  DriverInfo,
+  HostStats,
+  Service,
+  ServiceStatus,
+  StackManifest,
+  StackValues,
+} from '@dock/shared';
+import type { Config } from '../../config';
+import type { DockerDriver, DriverContext, ProgressFn } from '../driver';
+import { DriverError, NotFoundError } from '../driver';
+import { clampPct, humanBytes, humanDuration, usageLabel } from '../format';
+import type { Registry } from '../stacks/registry';
+import { activeProfiles, maskSecrets, resolveValues, secretKeys } from '../stacks/values';
 
-/**
- * Выдуманный хост в памяти процесса.
- *
- * Нужен, чтобы панель можно было разрабатывать и показывать на машине,
- * где докера нет вовсе. Повторяет поведение живого драйвера: операции не
- * мгновенные, статусы проходят через `updating`, контейнеры шумят в журнал.
- */
-
-interface MockService extends Service {
-  /** Момент запуска, от него считается uptime. */
-  startedAt: number | null;
+interface MockContainer {
+  service: string;
+  image: string;
+  port: string;
+  cpu: number;
   memBytes: number;
+  status: ServiceStatus;
+  startedAt: number | null;
 }
 
-const SEED: Array<Omit<MockService, 'uptime' | 'usage'>> = [
-  {
-    id: 'jellyfin',
-    name: 'jellyfin',
-    desc: 'Медиасервер · транскод на iGPU',
-    port: ':8096',
-    status: 'running',
-    cpu: 18,
-    mem: 34,
-    vol: 62,
-    memBytes: 1.4 * 1024 ** 3,
-    image: 'jellyfin/jellyfin:10.9.6',
-    domain: 'media',
-    volume: 'dock/jellyfin',
-    restart: 'unless-stopped',
-    autostart: true,
-    backup: true,
-    env: 'JELLYFIN_PublishedServerUrl=https://media.home.lan\nTZ=Europe/Belgrade',
-    containerId: 'mock-jellyfin',
-    managed: true,
-    startedAt: Date.now() - 12 * 86400 * 1000,
-  },
-  {
-    id: 'caddy',
-    name: 'caddy',
-    desc: 'Reverse proxy · автосертификаты',
-    port: ':443',
-    status: 'running',
-    cpu: 3,
-    mem: 9,
-    vol: 4,
-    memBytes: 82 * 1024 ** 2,
-    image: 'caddy:2.8-alpine',
-    domain: '—',
-    volume: 'dock/caddy',
-    restart: 'always',
-    autostart: true,
-    backup: true,
-    env: 'ACME_AGREE=true\nTZ=Europe/Belgrade',
-    containerId: 'mock-caddy',
-    managed: true,
-    startedAt: Date.now() - 31 * 86400 * 1000,
-  },
-  {
-    id: 'restic',
-    name: 'restic',
-    desc: 'Бэкапы · cron 03:00',
-    port: '—',
-    status: 'updating',
-    cpu: 41,
-    mem: 22,
-    vol: 78,
-    memBytes: 610 * 1024 ** 2,
-    image: 'restic/restic:0.16',
-    domain: '—',
-    volume: 'dock/restic',
-    restart: 'on-failure',
-    autostart: true,
-    backup: false,
-    env: 'RESTIC_REPOSITORY=/srv/backup\nTZ=Europe/Belgrade',
-    containerId: 'mock-restic',
-    managed: true,
-    startedAt: Date.now() - 6 * 3600 * 1000,
-  },
-  {
-    id: 'vaultwarden',
-    name: 'vaultwarden',
-    desc: 'Пароли · веб-хранилище',
-    port: ':8222',
-    status: 'running',
-    cpu: 2,
-    mem: 7,
-    vol: 11,
-    memBytes: 96 * 1024 ** 2,
-    image: 'vaultwarden/server:1.32',
-    domain: 'vault',
-    volume: 'dock/vault',
-    restart: 'unless-stopped',
-    autostart: true,
-    backup: true,
-    env: 'SIGNUPS_ALLOWED=false\nTZ=Europe/Belgrade',
-    containerId: 'mock-vaultwarden',
-    managed: true,
-    startedAt: Date.now() - 31 * 86400 * 1000,
-  },
-  {
-    id: 'immich',
-    name: 'immich',
-    desc: 'Фотоархив · индексация',
-    port: ':2283',
-    status: 'stopped',
-    cpu: 0,
-    mem: 0,
-    vol: 44,
-    memBytes: 0,
-    image: 'ghcr.io/immich-app/server:v1.118',
-    domain: 'photos',
-    volume: 'dock/immich',
-    restart: 'unless-stopped',
-    autostart: false,
-    backup: true,
-    env: 'DB_PASSWORD=•••••••\nTZ=Europe/Belgrade',
-    containerId: 'mock-immich',
-    managed: true,
-    startedAt: null,
-  },
-];
+interface MockStack {
+  id: string;
+  manifest: StackManifest;
+  values: StackValues;
+  secrets: string[];
+  containers: MockContainer[];
+}
 
-/** Фоновый шум в журнал — то же, что имитировал прототип. */
-const CHATTER: Record<string, string[]> = {
-  jellyfin: [
-    'playback started · 1080p direct play',
-    'library scan · 0 new items',
-    'client connected · 192.168.1.31',
-  ],
-  caddy: ['GET /  200 · 4ms', 'GET /api/status  200 · 2ms', 'tls handshake ok'],
-  vaultwarden: ['vault synced · 0 conflicts', 'session refreshed'],
-  restic: ['scanning /srv/data …', 'chunker: 2.1 GB processed'],
-  immich: ['thumbnail job queued'],
-};
+/** Фоновый шум в журнал — чтобы поток выглядел живым. */
+const CHATTER = [
+  'GET / 200 · 4ms',
+  'heartbeat ok',
+  'scrape completed · 128 series',
+  'session refreshed',
+  'compaction finished',
+  'client connected · 192.168.1.31',
+];
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 const pick = <T>(list: T[]): T => list[Math.floor(Math.random() * list.length)] as T;
 
+/**
+ * Выдуманный хост в памяти процесса.
+ *
+ * Нужен, чтобы панель можно было разрабатывать и показывать на машине, где
+ * докера нет вовсе. Работает по тем же манифестам, что и настоящий драйвер:
+ * стек из трёх сервисов и в моке будет стеком из трёх контейнеров, а не
+ * одной строчкой, — иначе mock перестанет ловить ошибки вёрстки.
+ */
 export class MockDriver implements DockerDriver {
   readonly kind = 'mock' as const;
 
-  private services: MockService[] = SEED.map((s) => ({ ...s, uptime: '—', usage: '— / —' }));
+  private stacks = new Map<string, MockStack>();
   private ctx!: DriverContext;
   private chatter: NodeJS.Timeout | null = null;
-  private readonly timers = new Set<NodeJS.Timeout>();
   private readonly bootedAt = Date.now() - 31 * 86400 * 1000;
+  private readonly totalRam = 64 * 1024 ** 3;
+
+  constructor(
+    private readonly config: Config,
+    private readonly registry: Registry,
+  ) {}
 
   async init(ctx: DriverContext): Promise<void> {
     this.ctx = ctx;
     ctx.log('dock', 'mock-драйвер поднят · хост выдуманный, докер не трогаем', 'dim');
-    ctx.log('restic', 'snapshot 8f21ac saved · 4.2 GB', 'dim');
-    ctx.log('caddy', 'certificate renewed for media.home.lan', 'ok');
-    ctx.log('jellyfin', 'library scan finished · 1 284 items', 'info');
-    ctx.log('vaultwarden', 'failed login from 192.168.1.44', 'warn');
+
+    // ставим несколько стеков из реестра, чтобы панель не пустовала
+    for (const entry of this.registry.list().slice(0, 3)) {
+      try {
+        const manifest = await this.registry.manifest(entry.id);
+        this.stacks.set(entry.id, await this.build(manifest, {}));
+        ctx.log(entry.id, `стек поднят · ${manifest.name} ${manifest.version}`, 'ok');
+      } catch (err) {
+        ctx.log('dock', `не собрать демо-стек ${entry.id}: ${describe(err)}`, 'warn');
+      }
+    }
 
     this.chatter = setInterval(() => {
-      const running = this.services.filter((s) => s.status === 'running');
+      const running = [...this.stacks.values()].flatMap((s) =>
+        s.containers.filter((c) => c.status === 'running').map((c) => ({ stack: s.id, c })),
+      );
       if (!running.length) return;
-      const svc = pick(running);
-      const pool = CHATTER[svc.id] ?? ['heartbeat ok'];
-      this.ctx.log(svc.id, pick(pool), 'dim');
+      const target = pick(running);
+      this.ctx.log(target.stack, `${target.c.service}: ${pick(CHATTER)}`, 'dim');
     }, 4200);
   }
 
@@ -173,180 +100,298 @@ export class MockDriver implements DockerDriver {
       version: 'mock 0.9.2',
       connected: true,
       message: 'докер не подключён — данные синтетические',
+      composeVersion: 'mock',
+      root: this.config.paths.root,
     };
   }
 
   async list(): Promise<Service[]> {
-    return this.services.map((s) => this.present(s));
+    return [...this.stacks.values()].map((stack) => this.present(stack));
   }
 
   async start(id: string): Promise<void> {
-    const svc = this.require(id);
-    if (svc.status === 'running') return;
-    svc.status = 'running';
-    svc.startedAt = Date.now();
-    svc.cpu = 4;
-    svc.mem = 12;
-    svc.memBytes = 120 * 1024 ** 2;
-    this.ctx.log(svc.id, `container started · ${svc.port}`, 'ok');
+    const stack = this.require(id);
+    for (const container of stack.containers) {
+      if (container.status === 'running') continue;
+      container.status = 'running';
+      container.startedAt = Date.now();
+      container.cpu = 2 + Math.random() * 8;
+      container.memBytes = (60 + Math.random() * 300) * 1024 ** 2;
+    }
+    this.ctx.log(id, 'стек запущен', 'ok');
     this.ctx.changed();
   }
 
   async stop(id: string): Promise<void> {
-    const svc = this.require(id);
-    if (svc.status === 'stopped') return;
-    svc.status = 'stopped';
-    svc.startedAt = null;
-    svc.cpu = 0;
-    svc.mem = 0;
-    svc.memBytes = 0;
-    this.ctx.log(svc.id, 'container stopped', 'warn');
-    this.ctx.changed();
-  }
-
-  async restart(id: string): Promise<void> {
-    const svc = this.require(id);
-    svc.status = 'updating';
-    this.ctx.log(svc.id, 'restarting …', 'warn');
-    this.ctx.changed();
-    await this.delay(1200);
-    svc.status = 'running';
-    svc.startedAt = Date.now();
-    this.ctx.log(svc.id, `container started · ${svc.port}`, 'ok');
-    this.ctx.changed();
-  }
-
-  async pull(id: string, onProgress: ProgressFn): Promise<void> {
-    const svc = this.require(id);
-    const wasRunning = svc.status === 'running';
-    svc.status = 'updating';
-    this.ctx.log(svc.id, `pulling ${svc.image} …`, 'dim');
-    this.ctx.changed();
-    for (let pct = 10; pct < 100; pct += 18) {
-      onProgress(pct, `слой ${Math.ceil(pct / 18)} из 5 …`);
-      await this.delay(260);
+    const stack = this.require(id);
+    for (const container of stack.containers) {
+      container.status = 'stopped';
+      container.startedAt = null;
+      container.cpu = 0;
+      container.memBytes = 0;
     }
-    svc.status = wasRunning ? 'running' : 'stopped';
-    onProgress(100, 'образ на свежем теге');
-    this.ctx.log(svc.id, 'image up to date', 'ok');
+    this.ctx.log(id, 'стек остановлен', 'warn');
     this.ctx.changed();
   }
 
-  async remove(id: string): Promise<void> {
-    const svc = this.require(id);
-    this.services = this.services.filter((s) => s.id !== id);
-    this.ctx.log(svc.id, 'container removed', 'err');
+  async restart(id: string, progress?: ProgressFn): Promise<void> {
+    const stack = this.require(id);
+    for (const container of stack.containers) container.status = 'updating';
+    this.ctx.log(id, 'перезапускаю контейнеры …', 'warn');
     this.ctx.changed();
+    progress?.(50, 'перезапускаю контейнеры …');
+    await sleep(1200);
+    await this.start(id);
   }
 
-  async create(spec: CreateServiceSpec, onProgress: ProgressFn): Promise<Service> {
+  async pull(id: string, progress: ProgressFn): Promise<void> {
+    const stack = this.require(id);
+    for (const container of stack.containers) container.status = 'updating';
+    this.ctx.changed();
+    for (let pct = 10; pct < 90; pct += 16) {
+      progress(pct, 'тяну образы …');
+      await sleep(260);
+    }
+    progress(92, 'пересоздаю на новых образах …');
+    await sleep(300);
+    await this.start(id);
+    progress(100, 'образы свежие');
+    this.ctx.log(id, 'образы обновлены', 'ok');
+  }
+
+  async installStack(stackId: string, values: StackValues, progress: ProgressFn): Promise<void> {
+    if (this.stacks.has(stackId)) {
+      throw new DriverError(`стек ${stackId} уже стоит на хосте`, 409, 'already_exists');
+    }
+    const manifest = await this.registry.manifest(stackId);
+
     const steps = [
-      'подтягиваю образ …',
-      'создаю том …',
-      'поднимаю контейнер …',
-      'прописываю маршрут в caddy …',
+      'читаю манифест …',
+      'раскладываю файлы стека …',
+      'тяну образы …',
+      'создаю каталоги данных …',
+      'поднимаю контейнеры …',
     ];
     for (let i = 0; i < steps.length; i += 1) {
-      onProgress(Math.round(((i + 1) / (steps.length + 1)) * 100), steps[i] as string);
-      await this.delay(420);
+      progress(Math.round(((i + 1) / (steps.length + 1)) * 100), steps[i] as string);
+      await sleep(420);
     }
-    const svc: MockService = {
-      id: spec.id,
-      name: spec.name,
-      desc: spec.desc,
-      port: spec.hostPort ? `:${spec.hostPort}` : '—',
-      status: 'running',
-      cpu: 6,
-      mem: 14,
-      vol: 8,
-      memBytes: 180 * 1024 ** 2,
-      uptime: '0 минут',
-      usage: '6% / 180 MB',
-      image: spec.image,
-      domain: spec.domain,
-      volume: spec.volume,
-      restart: spec.restart,
-      autostart: spec.autostart,
-      backup: spec.backup,
-      env: spec.env,
-      containerId: `mock-${spec.id}`,
-      managed: true,
-      startedAt: Date.now(),
-    };
-    this.services.push(svc);
-    onProgress(100, 'готово');
-    this.ctx.log(spec.id, `container created · ${svc.port}`, 'ok');
+
+    this.stacks.set(stackId, await this.build(manifest, values));
+    progress(100, 'готово');
+    this.ctx.log(stackId, `стек поднят · ${manifest.name} ${manifest.version}`, 'ok');
     this.ctx.changed();
-    return this.present(svc);
   }
 
-  async applyConfig(id: string, cfg: ServiceConfig, onProgress: ProgressFn): Promise<void> {
-    const svc = this.require(id);
-    onProgress(20, 'останавливаю контейнер …');
-    await this.delay(300);
-    svc.port = cfg.port ? `:${cfg.port}` : '—';
-    svc.domain = cfg.domain;
-    svc.volume = cfg.volume;
-    svc.restart = cfg.restart;
-    svc.env = cfg.env;
-    svc.autostart = cfg.autostart;
-    svc.backup = cfg.backup;
-    onProgress(70, 'пересоздаю с новыми параметрами …');
-    await this.delay(400);
-    if (svc.status === 'running') svc.startedAt = Date.now();
-    onProgress(100, 'готово');
-    this.ctx.log(svc.id, 'config applied · recreating container', 'ok');
+  async applyStackValues(id: string, values: StackValues, progress: ProgressFn): Promise<void> {
+    const stack = this.require(id);
+    progress(30, 'переписываю конфиги …');
+    await sleep(400);
+    const resolved = resolveValues(stack.manifest, values, this.context(id));
+    stack.values = maskSecrets(resolved, stack.secrets);
+    progress(70, 'пересоздаю изменившееся …');
+    await sleep(500);
+    progress(100, 'готово');
+    this.ctx.log(id, 'конфиг применён', 'ok');
+    this.ctx.changed();
+  }
+
+  async removeStack(id: string, progress: ProgressFn, purge = false): Promise<void> {
+    this.require(id);
+    progress(40, 'снимаю контейнеры …');
+    await sleep(400);
+    this.stacks.delete(id);
+    progress(100, 'готово');
+    this.ctx.log(id, purge ? 'стек удалён вместе с данными' : 'стек снят · данные остались', 'err');
     this.ctx.changed();
   }
 
   async host(): Promise<HostStats> {
-    // лёгкий дрейф вокруг значений прототипа, чтобы графики не выглядели мёртвыми
-    const drift = (base: number, spread: number) =>
-      clampPct(base + (Math.random() - 0.5) * spread);
+    const drift = (base: number, spread: number) => clampPct(base + (Math.random() - 0.5) * spread);
     const cpuPct = drift(23, 8);
     const ramPct = drift(29, 4);
     const uptimeSeconds = Math.floor((Date.now() - this.bootedAt) / 1000);
     return {
       cpu: `${cpuPct}%`,
       cpuPct,
-      ram: `${((ramPct / 100) * 32).toFixed(1)} / 32 GB`,
+      cpuCores: 16,
+      ram: `${humanBytes(this.totalRam * (ramPct / 100))} / ${humanBytes(this.totalRam)}`,
       ramPct,
-      disk: '1.8 / 4 TB',
+      disk: '1.8 TB / 4.0 TB',
       diskPct: 45,
       uptime: humanDuration(uptimeSeconds),
       uptimeSeconds,
+      truthful: true,
     };
   }
 
   async dispose(): Promise<void> {
     if (this.chatter) clearInterval(this.chatter);
-    for (const t of this.timers) clearTimeout(t);
-    this.timers.clear();
   }
 
-  private require(id: string): MockService {
-    const svc = this.services.find((s) => s.id === id);
-    if (!svc) throw new NotFoundError(id);
-    return svc;
+  // ── внутреннее ────────────────────────────────────────────────────────────
+
+  private context(id: string) {
+    const settings = this.ctx.settings();
+    const dir = path.posix.join(this.config.paths.stacks, id);
+    return {
+      DOCK_STACK_ID: id,
+      DOCK_STACK_DIR: dir,
+      DOCK_DATA_DIR: path.posix.join(dir, 'data'),
+      DOCK_NETWORK: this.config.docker.network,
+      DOCK_TZ: settings.tz,
+      DOCK_DOMAIN: settings.domain,
+      DOCK_HOSTNAME: settings.hostname,
+      DOCK_PUID: String(this.config.docker.puid),
+      DOCK_PGID: String(this.config.docker.pgid),
+    };
   }
 
-  /** Пересчитывает производные подписи прямо перед отдачей наружу. */
-  private present(svc: MockService): Service {
-    const uptime = svc.startedAt ? humanDuration((Date.now() - svc.startedAt) / 1000) : '—';
-    const usage = svc.status === 'running' ? usageLabel(svc.cpu, svc.memBytes) : '— / —';
-    const { startedAt: _startedAt, memBytes: _memBytes, ...rest } = svc;
-    return { ...rest, uptime, usage };
+  /**
+   * Собирает выдуманный стек по манифесту: по контейнеру на сервис compose.
+   * Compose-файл читается из реестра по-настоящему — иначе стек из пяти
+   * сервисов выглядел бы в моке одной строчкой и перестал бы ловить ошибки
+   * вёрстки списка контейнеров.
+   */
+  private async build(manifest: StackManifest, provided: StackValues): Promise<MockStack> {
+    const values = resolveValues(manifest, provided, this.context(manifest.id));
+    const profiles = new Set(activeProfiles(manifest, values));
+
+    const compose = await this.composeOf(manifest);
+
+    const containers: MockContainer[] = Object.entries(compose.services ?? {})
+      .filter(([, svc]) => !svc.profiles?.length || svc.profiles.some((p) => profiles.has(p)))
+      .map(([service, svc]) => {
+        const portSpec = svc.ports?.[0] ?? '';
+        const hostPort = this.resolvePort(portSpec, values);
+        return {
+          service,
+          image: this.resolve(svc.image ?? `${service}:latest`, values),
+          port: hostPort ? `:${hostPort}` : '—',
+          cpu: 2 + Math.random() * 12,
+          memBytes: (60 + Math.random() * 400) * 1024 ** 2,
+          status: 'running' as ServiceStatus,
+          startedAt: Date.now() - Math.floor(Math.random() * 6 * 3600 * 1000),
+        };
+      });
+
+    return {
+      id: manifest.id,
+      manifest,
+      values: maskSecrets(values, secretKeys(manifest)),
+      secrets: secretKeys(manifest),
+      containers: containers.length ? containers : [this.placeholder(manifest)],
+    };
   }
 
-  private delay(ms: number): Promise<void> {
-    return new Promise((resolve) => {
-      const t = setTimeout(() => {
-        this.timers.delete(t);
-        resolve();
-      }, ms);
-      this.timers.add(t);
-    });
+  private async composeOf(manifest: StackManifest): Promise<{
+    services?: Record<string, { image?: string; ports?: string[]; profiles?: string[] }>;
+  }> {
+    if (typeof manifest.compose !== 'string') {
+      return manifest.compose as { services?: Record<string, never> };
+    }
+    try {
+      const raw = await this.registry.file(manifest.id, manifest.compose);
+      return (parse(raw) ?? {}) as { services?: Record<string, never> };
+    } catch {
+      return {};
+    }
+  }
+
+  private placeholder(manifest: StackManifest): MockContainer {
+    return {
+      service: manifest.id,
+      image: `${manifest.id}:latest`,
+      port: '—',
+      cpu: 3,
+      memBytes: 120 * 1024 ** 2,
+      status: 'running',
+      startedAt: Date.now(),
+    };
+  }
+
+  private resolve(text: string, values: StackValues): string {
+    return text.replace(/\$\{([A-Za-z_][A-Za-z0-9_]*)\}/g, (match, key: string) =>
+      values[key] !== undefined ? String(values[key]) : match,
+    );
+  }
+
+  private resolvePort(spec: string, values: StackValues): string {
+    const resolved = this.resolve(spec, values);
+    const host = resolved.split(':')[0] ?? '';
+    return /^\d+$/.test(host) ? host : '';
+  }
+
+  private require(id: string): MockStack {
+    const stack = this.stacks.get(id);
+    if (!stack) throw new NotFoundError(id);
+    return stack;
+  }
+
+  private present(stack: MockStack): Service {
+    const containers: ContainerRef[] = stack.containers.map((c) => ({
+      id: `mock-${stack.id}-${c.service}`,
+      service: c.service,
+      name: `${stack.id}-${c.service}-1`,
+      image: c.image,
+      status: c.status,
+      cpu: clampPct(c.cpu),
+      mem: clampPct((c.memBytes / this.totalRam) * 100 * 20),
+      usage: c.status === 'running' ? usageLabel(c.cpu, c.memBytes) : '— / —',
+      uptime: c.startedAt ? humanDuration((Date.now() - c.startedAt) / 1000) : '—',
+      port: c.port,
+    }));
+
+    const running = containers.filter((c) => c.status === 'running').length;
+    let status: ServiceStatus;
+    if (containers.some((c) => c.status === 'updating')) status = 'updating';
+    else if (running === containers.length && running > 0) status = 'running';
+    else if (running === 0) status = 'stopped';
+    else status = 'error';
+
+    const primaryName = stack.manifest.primary ?? containers[0]?.service;
+    const primary = containers.find((c) => c.service === primaryName) ?? containers[0];
+
+    const cpu = clampPct(stack.containers.reduce((sum, c) => sum + c.cpu, 0));
+    const memBytes = stack.containers.reduce((sum, c) => sum + c.memBytes, 0);
+    const oldest = stack.containers
+      .map((c) => c.startedAt)
+      .filter((t): t is number => t !== null)
+      .sort((a, b) => a - b)[0];
+
+    const domain = stack.values.DOMAIN ?? stack.values.SUBDOMAIN;
+
+    return {
+      kind: 'stack',
+      stackId: stack.id,
+      version: stack.manifest.version,
+      containers,
+      id: stack.id,
+      name: stack.manifest.name,
+      desc: stack.manifest.summary,
+      port: primary?.port ?? '—',
+      status,
+      cpu,
+      mem: clampPct((memBytes / this.totalRam) * 100 * 20),
+      vol: 20 + (stack.id.length % 5) * 12,
+      usage: running ? usageLabel(cpu, memBytes) : '— / —',
+      uptime: oldest && running ? humanDuration((Date.now() - oldest) / 1000) : '—',
+      image: primary?.image ?? '—',
+      domain: domain ? String(domain) : '—',
+      volume: path.posix.join(this.config.paths.stacks, stack.id),
+      restart: 'unless-stopped',
+      autostart: true,
+      backup: true,
+      env: Object.entries(stack.values)
+        .filter(([key]) => !key.startsWith('DOCK_'))
+        .map(([key, value]) => `${key}=${String(value)}`)
+        .join('\n'),
+      containerId: primary?.id ?? null,
+      managed: true,
+    };
   }
 }
 
-export { sleep };
+function describe(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}

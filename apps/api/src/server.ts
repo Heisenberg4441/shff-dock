@@ -77,7 +77,11 @@ async function main(): Promise<void> {
   process.on('SIGINT', () => void close('SIGINT'));
 
   await app.listen({ port: config.port, host: config.host });
-  app.log.info(`драйвер: ${config.driver} · данные: ${config.dataDir}`);
+  app.log.info(
+    `драйвер: ${config.driver} · раскладка: ${config.paths.root} · метрики: ${
+      config.metrics.hostMounted ? 'хостовые' : 'только контейнер'
+    }`,
+  );
 }
 
 main().catch((err) => {

@@ -6,9 +6,15 @@ import type {
   Job,
   LogEntry,
   Service,
-  ServiceConfig,
   Settings,
 } from './domain';
+import type {
+  InstalledStack,
+  RegistryEntry,
+  RegistrySource,
+  StackManifest,
+  StackValues,
+} from './stack';
 
 /** Префикс всех HTTP-ручек ядра. */
 export const API_PREFIX = '/api';
@@ -30,7 +36,8 @@ export type ServerEvent =
   | { type: 'host'; host: HostStats }
   | { type: 'job'; job: Job }
   | { type: 'settings'; settings: Settings }
-  | { type: 'backup'; backup: BackupInfo };
+  | { type: 'backup'; backup: BackupInfo }
+  | { type: 'catalog'; catalog: RegistryEntry[]; source: RegistrySource };
 
 /** Сообщения клиент → сервер. Пока только пинг, чтобы держать соединение живым. */
 export type ClientMessage = { type: 'ping' };
@@ -52,6 +59,19 @@ export interface JobResponse {
   job: Job;
 }
 
+export interface CatalogResponse {
+  catalog: RegistryEntry[];
+  source: RegistrySource;
+}
+
+/** Манифест плюс уже подставленные значения по умолчанию — форма установки. */
+export interface StackFormResponse {
+  manifest: StackManifest;
+  values: StackValues;
+  /** Порты, которые на хосте уже заняты — панель подсветит конфликт. */
+  busyPorts: number[];
+}
+
 export interface ConsoleRequest {
   cmd: string;
 }
@@ -65,6 +85,8 @@ export interface BootstrapResponse {
   settings: Settings;
   backup: BackupInfo;
   logs: LogEntry[];
+  catalog: RegistryEntry[];
+  catalogSource: RegistrySource;
 }
 
 /**
@@ -75,17 +97,25 @@ export const routes = {
   health: '/health',
   bootstrap: '/bootstrap',
   host: '/host',
+
   services: '/services',
-  install: '/services/install',
-  pullAll: '/services/pull-all',
   service: '/services/:id',
   serviceStart: '/services/:id/start',
   serviceStop: '/services/:id/stop',
   serviceRestart: '/services/:id/restart',
   servicePull: '/services/:id/pull',
   serviceCompose: '/services/:id/compose',
+  /** Значения инпутов установленного стека — форма вкладки «конфиг». */
+  serviceStack: '/services/:id/stack',
+  pullAll: '/services/pull-all',
+
   catalog: '/catalog',
+  catalogRefresh: '/catalog/refresh',
+  /** Манифест и значения по умолчанию для формы установки. */
+  catalogStack: '/catalog/:id',
   catalogCompose: '/catalog/:id/compose',
+  install: '/stacks/install',
+
   logs: '/logs',
   settings: '/settings',
   settingsReset: '/settings/reset',
@@ -94,11 +124,15 @@ export const routes = {
   daemonRestart: '/daemon/restart',
 } as const;
 
-/** '/services/:id' + { id: 'gitea' } → '/services/gitea'. */
+/** '/services/:id' + { id: 'grafana' } → '/services/grafana'. */
 export function withParams(pattern: string, params: Record<string, string>): string {
   return pattern.replace(/:(\w+)/g, (_match, key: string) =>
     encodeURIComponent(params[key] ?? ''),
   );
 }
 
-export type ServiceConfigPatch = Partial<ServiceConfig>;
+export interface StackConfigPatch {
+  values: StackValues;
+}
+
+export type { InstalledStack };

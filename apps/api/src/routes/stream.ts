@@ -25,6 +25,7 @@ export async function registerStream(app: FastifyInstance, engine: DockEngine): 
       send({ type: 'host', host: snapshot.host });
       send({ type: 'settings', settings: snapshot.settings });
       send({ type: 'backup', backup: snapshot.backup });
+      send({ type: 'catalog', catalog: snapshot.catalog, source: snapshot.catalogSource });
       for (const entry of snapshot.logs) send({ type: 'log', entry });
     });
 

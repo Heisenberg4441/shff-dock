@@ -18,6 +18,16 @@ function Stat({ label, value, pct, note }: { label: string; value: string; pct?:
   );
 }
 
+/** 1 контейнер / 2 контейнера / 5 контейнеров. */
+function plural(n: number): string {
+  const mod100 = n % 100;
+  const mod10 = mod100 % 10;
+  if (mod100 >= 11 && mod100 <= 14) return 'контейнеров';
+  if (mod10 === 1) return 'контейнер';
+  if (mod10 >= 2 && mod10 <= 4) return 'контейнера';
+  return 'контейнеров';
+}
+
 function ServiceCard({ svc }: { svc: Service }) {
   const { actions, jobFor } = useDock();
   const job = jobFor(svc.id);
@@ -33,9 +43,16 @@ function ServiceCard({ svc }: { svc: Service }) {
             </a>
             <span className="svc-desc">{svc.desc}</span>
           </div>
-          <Badge tone={STATUS_TONE[svc.status]} led>
-            {svc.status}
-          </Badge>
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 5 }}>
+            <Badge tone={STATUS_TONE[svc.status]} led>
+              {svc.status}
+            </Badge>
+            <span style={{ fontSize: 10, color: 'var(--faint)' }}>
+              {svc.kind === 'stack'
+                ? `${svc.containers.length} ${plural(svc.containers.length)} · v${svc.version}`
+                : '// не через dock'}
+            </span>
+          </div>
         </div>
 
         <div className="svc-meta">
@@ -91,15 +108,27 @@ export function ServicesPage() {
       <PageHead
         kicker="$ dock ps"
         title="Сервисы"
-        lede="Всё, что крутится на твоём железе. Один compose-файл на каждый контейнер."
+        lede="Всё, что крутится на твоём железе. Один каталог со своим compose-файлом на каждый стек."
       />
 
       <div className="dock-stats">
-        <Stat label="CPU" value={host.cpu} pct={host.cpuPct} />
+        <Stat
+          label="CPU"
+          value={host.cpu}
+          pct={host.cpuPct}
+          note={host.cpuCores ? `// ${host.cpuCores} ядер` : undefined}
+        />
         <Stat label="RAM" value={host.ram} pct={host.ramPct} />
         <Stat label="ДИСК" value={host.disk} pct={host.diskPct} />
         <Stat label="UPTIME" value={host.uptime} note="// с последней перезагрузки" />
       </div>
+
+      {!host.truthful ? (
+        <div className="dock-offline" style={{ marginTop: -10 }}>
+          <span style={{ color: 'var(--warn)' }}>●</span>
+          {host.note ?? 'метрики сняты с контейнера, а не с хоста'}
+        </div>
+      ) : null}
 
       <div className="dock-actions">
         <Button variant="primary" onClick={() => go('#catalog')}>

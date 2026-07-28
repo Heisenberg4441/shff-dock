@@ -1,35 +1,60 @@
+# SHFF Dock — панель управления контейнерами.
+#
+#   docker compose up -d --build
+#
+# Больше ничего готовить не нужно: /home/dock панель создаст сама, общую сеть
+# тоже, реестр готовых стеков лежит внутри образа.
+
 services:
   dock:
     build: .
     image: shff-dock:0.9.2
     container_name: shff-dock
     restart: unless-stopped
+
     ports:
       - "${DOCK_PANEL_PORT:-7788}:7788"
+
     volumes:
-      # Ядро управляет контейнерами хоста через этот сокет — без него
-      # панель поднимется, но покажет «докер недоступен».
+      # Управление контейнерами хоста: без сокета панель поднимется, но покажет
+      # «докер недоступен».
       - /var/run/docker.sock:/var/run/docker.sock
-      # dock.yml, отметки о бэкапах и сгенерированные compose-файлы
-      - ./data:/app/data
-      # Корень томов: панель читает заполненность и создаёт здесь каталоги
-      - ${DOCK_HOST_VOLUME_ROOT:-/srv}:${DOCK_HOST_VOLUME_ROOT:-/srv}
-      # Метрики хоста: uptime, память и место на диске
-      - /proc:/proc:ro
+
+      # Раскладка стеков. Путь одинаков внутри и снаружи — только поэтому
+      # bind-монтирования, которые панель пишет в compose-файлы стеков,
+      # разрешаются на хосте в те же каталоги.
+      - ${DOCK_ROOT:-/home/dock}:${DOCK_ROOT:-/home/dock}
+
+      # Метрики про железо, а не про контейнер. Без этих трёх строк панель
+      # покажет память и диски, выделенные докеру, а не то, что стоит в машине.
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/host/rootfs:ro
+
     environment:
       # mock — выдуманный хост без докера, docker — настоящий демон
       DOCK_DRIVER: ${DOCK_DRIVER:-docker}
-      DOCK_DATA_DIR: /app/data
+      DOCK_ROOT: ${DOCK_ROOT:-/home/dock}
       DOCK_DOCKER_SOCKET: /var/run/docker.sock
-      DOCK_HOST_VOLUME_ROOT: ${DOCK_HOST_VOLUME_ROOT:-/srv}
-      DOCK_HOST_ROOT: ${DOCK_HOST_ROOT:-/}
       DOCK_NETWORK: ${DOCK_NETWORK:-dock}
       DOCK_ADOPT_FOREIGN: ${DOCK_ADOPT_FOREIGN:-true}
       DOCK_POLL_INTERVAL: ${DOCK_POLL_INTERVAL:-4000}
+
+      # uid:gid, под которым создаются каталоги данных стеков
+      DOCK_PUID: ${DOCK_PUID:-1000}
+      DOCK_PGID: ${DOCK_PGID:-1000}
+
+      # Свой репозиторий готовых стеков; пусто — живём на вшитом реестре.
+      # Формат: https://raw.githubusercontent.com/<owner>/<repo>/<ref>
+      DOCK_REGISTRY_URL: ${DOCK_REGISTRY_URL:-}
+
       LOG_LEVEL: ${LOG_LEVEL:-info}
+
     networks:
       - dock
 
+# Та же сеть, в которую панель включает поднятые ею стеки: сервисы видят друг
+# друга по именам, а reverse proxy видит их все.
 networks:
   dock:
     name: ${DOCK_NETWORK:-dock}

@@ -12,12 +12,40 @@ export const RESTART_POLICIES: RestartPolicy[] = ['unless-stopped', 'always', 'o
 /** Уровень строки журнала — определяет цвет в терминале панели. */
 export type LogLevel = 'ok' | 'info' | 'warn' | 'err' | 'dim';
 
+/** Контейнер внутри стека — одна строка в списке участников. */
+export interface ContainerRef {
+  /** Полный id контейнера в докере. */
+  id: string;
+  /** Имя сервиса в compose: 'grafana', 'prometheus'. */
+  service: string;
+  name: string;
+  image: string;
+  status: ServiceStatus;
+  cpu: number;
+  mem: number;
+  usage: string;
+  uptime: string;
+  port: string;
+}
+
 /**
- * Сервис = один управляемый докером контейнер плюс метаданные dock.
+ * Карточка сервиса в панели. Это либо стек (один или несколько контейнеров,
+ * поднятых одним compose-файлом), либо одиночный контейнер, найденный на хосте
+ * и поднятый не через dock.
+ *
  * Числовые поля (`cpu`/`mem`/`vol`) — проценты 0..100 для прогресс-баров,
- * строковые (`usage`/`uptime`) — уже отформатированные подписи.
+ * строковые (`usage`/`uptime`) — уже отформатированные подписи. У стека они
+ * агрегированы по всем контейнерам.
  */
 export interface Service {
+  /** 'stack' — поднят панелью из манифеста, 'container' — чужой контейнер. */
+  kind: 'stack' | 'container';
+  /** id стека, если сервис им является. */
+  stackId: string | null;
+  /** Версия манифеста, из которого стек поставлен. */
+  version: string | null;
+  /** Участники стека; у одиночного контейнера — он сам. */
+  containers: ContainerRef[];
   id: string;
   name: string;
   desc: string;
@@ -32,7 +60,7 @@ export interface Service {
   image: string;
   /** Поддомен без базового домена: 'media' → media.home.lan. '—' если прокси не нужен. */
   domain: string;
-  /** Путь тома относительно каталога данных: 'dock/jellyfin'. */
+  /** Каталог стека на хосте: /home/dock/stacks/grafana. */
   volume: string;
   restart: RestartPolicy;
   autostart: boolean;
@@ -56,15 +84,26 @@ export interface ServiceConfig {
   backup: boolean;
 }
 
+/**
+ * Метрики хоста, а не контейнера панели. Если ядро видит только то, что
+ * выделено докеру, `truthful` = false — панель об этом честно скажет вместо
+ * того, чтобы показывать 30 ГБ там, где на машине 64.
+ */
 export interface HostStats {
   cpu: string;
   cpuPct: number;
+  /** Сколько ядер у хоста. */
+  cpuCores: number;
   ram: string;
   ramPct: number;
   disk: string;
   diskPct: number;
   uptime: string;
   uptimeSeconds: number;
+  /** true, если цифры сняты с хоста (примонтированы /host/proc и rootfs). */
+  truthful: boolean;
+  /** Что именно не примонтировано, если truthful = false. */
+  note?: string;
 }
 
 export interface LogEntry {
@@ -75,24 +114,6 @@ export interface LogEntry {
   svc: string;
   level: LogLevel;
   text: string;
-}
-
-export interface CatalogItem {
-  id: string;
-  name: string;
-  cat: string;
-  desc: string;
-  meta: string;
-  /** Порт на хосте по умолчанию. */
-  port: string;
-  /** Порт, который образ слушает внутри контейнера. */
-  containerPort: string;
-  /** Том по умолчанию относительно каталога данных. */
-  vol: string;
-  image: string;
-  /** Куда монтировать том внутри контейнера. */
-  mount: string;
-  env: Record<string, string>;
 }
 
 export interface Settings {
@@ -140,14 +161,6 @@ export interface BackupInfo {
   size: string | null;
 }
 
-export interface InstallRequest {
-  catalogId: string;
-  port: string;
-  domain: string;
-  volume: string;
-  autostart: boolean;
-}
-
 export interface ConsoleResult {
   lines: string[];
   /** Навигационный побочный эффект команды: `dock logs` уводит на #logs. */
@@ -162,4 +175,8 @@ export interface DriverInfo {
   /** Доступен ли докер-сокет; в mock-режиме всегда true. */
   connected: boolean;
   message?: string;
+  /** Есть ли рядом `docker compose` — без него стеки не поднять. */
+  composeVersion?: string;
+  /** Корень раскладки: /home/dock. */
+  root?: string;
 }

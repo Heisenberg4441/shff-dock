@@ -1,30 +1,4 @@
-import type {
-  DriverInfo,
-  HostStats,
-  LogLevel,
-  RestartPolicy,
-  Service,
-  ServiceConfig,
-  Settings,
-} from '@dock/shared';
-
-/** Что нужно знать драйверу, чтобы поднять новый сервис. */
-export interface CreateServiceSpec {
-  id: string;
-  name: string;
-  desc: string;
-  image: string;
-  hostPort: string;
-  containerPort: string;
-  /** Путь тома относительно корня томов: 'dock/gitea'. */
-  volume: string;
-  mount: string;
-  domain: string;
-  restart: RestartPolicy;
-  env: string;
-  autostart: boolean;
-  backup: boolean;
-}
+import type { DriverInfo, HostStats, LogLevel, Service, Settings, StackValues } from '@dock/shared';
 
 export type ProgressFn = (pct: number, step: string) => void;
 
@@ -41,9 +15,10 @@ export interface DriverContext {
  * Единственная точка соприкосновения ядра с хостом.
  *
  * Ровно два воплощения: MockDriver держит выдуманный хост в памяти,
- * DockerodeDriver ходит в настоящий демон по сокету. Всё остальное ядро
- * (маршруты, журнал, настройки, задачи) о разнице не знает — поэтому
- * переключение режима это одна переменная окружения, а не ветка в коде.
+ * DockerodeDriver ходит в настоящий демон и раскладывает стеки по
+ * /home/dock/stacks. Всё остальное ядро (маршруты, журнал, настройки, задачи)
+ * о разнице не знает — поэтому переключение режима это одна переменная
+ * окружения, а не ветка в коде.
  */
 export interface DockerDriver {
   readonly kind: 'mock' | 'docker';
@@ -51,19 +26,22 @@ export interface DockerDriver {
   init(ctx: DriverContext): Promise<void>;
   info(): Promise<DriverInfo>;
 
-  /** Полный снимок сервисов вместе со свежими метриками. */
+  /** Полный снимок: стеки со свёрнутыми в них контейнерами плюс чужие контейнеры. */
   list(): Promise<Service[]>;
 
-  start(id: string): Promise<void>;
-  stop(id: string): Promise<void>;
-  restart(id: string): Promise<void>;
-  pull(id: string, onProgress: ProgressFn): Promise<void>;
-  remove(id: string): Promise<void>;
+  start(id: string, progress?: ProgressFn): Promise<void>;
+  stop(id: string, progress?: ProgressFn): Promise<void>;
+  restart(id: string, progress?: ProgressFn): Promise<void>;
+  pull(id: string, progress: ProgressFn): Promise<void>;
 
-  create(spec: CreateServiceSpec, onProgress: ProgressFn): Promise<Service>;
+  /** Ставит стек из реестра с введёнными значениями инпутов. */
+  installStack(stackId: string, values: StackValues, progress: ProgressFn): Promise<void>;
 
-  /** Применяет конфиг: контейнер пересоздаётся с новыми параметрами. */
-  applyConfig(id: string, config: ServiceConfig, onProgress: ProgressFn): Promise<void>;
+  /** Применяет новые значения инпутов к уже стоящему стеку. */
+  applyStackValues(id: string, values: StackValues, progress: ProgressFn): Promise<void>;
+
+  /** Снимает стек. purge = true — вместе с каталогом данных. */
+  removeStack(id: string, progress: ProgressFn, purge?: boolean): Promise<void>;
 
   host(): Promise<HostStats>;
 

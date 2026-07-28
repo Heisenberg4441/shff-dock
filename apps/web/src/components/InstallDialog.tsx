@@ -1,55 +1,70 @@
 import { useEffect, useState } from 'react';
-import { Button, Checkbox, Dialog, Field, Input, ProgressBar } from '@dock/ui';
+import { Button, Callout, Dialog, ProgressBar } from '@dock/ui';
+import type { StackManifest, StackValues } from '@dock/shared';
+import { api } from '../api/client';
 import { go } from '../hooks/useHashRoute';
 import { useDock } from '../state/store';
 import { useUi } from '../state/ui';
+import { StackForm } from './StackForm';
 
-interface Form {
-  port: string;
-  domain: string;
-  volume: string;
-  autostart: boolean;
-}
-
-/** Диалог установки из каталога: форма → задача в ядре → прогресс по вебсокету. */
+/**
+ * Диалог установки стека.
+ *
+ * Форма не зашита: панель спрашивает у ядра манифест и рисует ровно те поля,
+ * что объявил автор стека. Прогресс приезжает по вебсокету, поэтому диалог
+ * показывает настоящие шаги compose, а не выдуманный таймер.
+ */
 export function InstallDialog() {
   const { settings, jobs, actions } = useDock();
   const ui = useUi();
-  const item = ui.installItem;
+  const entry = ui.installItem;
 
-  const [form, setForm] = useState<Form>({ port: '', domain: '', volume: '', autostart: true });
+  const [manifest, setManifest] = useState<StackManifest | null>(null);
+  const [values, setValues] = useState<StackValues>({});
+  const [busyPorts, setBusyPorts] = useState<number[]>([]);
+  const [error, setError] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!item) {
+    if (!entry) {
+      setManifest(null);
       setJobId(null);
+      setError(null);
       return;
     }
-    setForm({ port: item.port, domain: item.id, volume: item.vol, autostart: true });
+    let alive = true;
+    setManifest(null);
+    setError(null);
     setJobId(null);
-  }, [item]);
+    void api
+      .catalogForm(entry.id)
+      .then((form) => {
+        if (!alive) return;
+        setManifest(form.manifest);
+        setValues(form.values);
+        setBusyPorts(form.busyPorts);
+      })
+      .catch((err: Error) => alive && setError(err.message));
+    return () => {
+      alive = false;
+    };
+  }, [entry?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const job = jobId ? jobs.find((j) => j.id === jobId) : undefined;
   const installing = job?.status === 'running';
 
-  // задача досчитала до конца — закрываем диалог и уходим на карточку сервиса
+  // задача досчитала до конца — закрываем диалог и уходим на карточку стека
   useEffect(() => {
-    if (!item || !job || job.status !== 'done') return;
+    if (!entry || !job || job.status !== 'done') return;
     ui.closeInstall();
-    actions.toast('установлено', `${item.name} поднят на порту ${form.port}`, 'ok');
+    actions.toast('установлено', `${entry.name} поднят`, 'ok');
     go(`#service/${job.target}`);
   }, [job?.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  if (!item) return <Dialog open={false} />;
+  if (!entry) return <Dialog open={false} />;
 
   const start = async (): Promise<void> => {
-    const created = await actions.install({
-      catalogId: item.id,
-      port: form.port,
-      domain: form.domain,
-      volume: form.volume,
-      autostart: form.autostart,
-    });
+    const created = await actions.install(entry.id, values);
     if (created) setJobId(created.id);
   };
 
@@ -58,13 +73,18 @@ export function InstallDialog() {
       open
       onClose={installing ? undefined : ui.closeInstall}
       barTitle={`${settings.operator}@${settings.hostname}: ~`}
-      title={`Установить ${item.name}`}
+      title={`Установить ${entry.name}`}
       actions={
         <>
           <Button size="sm" disabled={installing} onClick={ui.closeInstall}>
             отмена
           </Button>
-          <Button variant="primary" size="sm" disabled={installing} onClick={() => void start()}>
+          <Button
+            variant="primary"
+            size="sm"
+            disabled={installing || !manifest}
+            onClick={() => void start()}
+          >
             {installing ? 'ставлю…' : 'установить'}
           </Button>
         </>
@@ -72,40 +92,31 @@ export function InstallDialog() {
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <span style={{ fontSize: 13, color: 'var(--muted)', lineHeight: 1.65 }}>
-          {`${item.desc} Один compose-файл, одна команда. Данные останутся на твоём диске.`}
+          {manifest?.description ?? entry.summary}
         </span>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-          <Field label="Порт">
-            <Input value={form.port} onChange={(e) => setForm({ ...form, port: e.target.value })} />
-          </Field>
-          <Field label="Поддомен">
-            <Input
-              value={form.domain}
-              onChange={(e) => setForm({ ...form, domain: e.target.value })}
+        {error ? <Callout tone="warn">{error}</Callout> : null}
+
+        {manifest ? (
+          <div className="dock-form" style={{ paddingTop: 0, maxWidth: 'none' }}>
+            <StackForm
+              manifest={manifest}
+              values={values}
+              busyPorts={busyPorts}
+              onChange={(key, value) => setValues((prev) => ({ ...prev, [key]: value }))}
             />
-          </Field>
-        </div>
-
-        <Field label="Том с данными">
-          <Input
-            prompt="~"
-            value={form.volume}
-            onChange={(e) => setForm({ ...form, volume: e.target.value })}
-          />
-        </Field>
-
-        <Checkbox
-          label="запускать автоматически"
-          sublabel="restart: unless-stopped"
-          checked={form.autostart}
-          onChange={() => setForm({ ...form, autostart: !form.autostart })}
-        />
+          </div>
+        ) : !error ? (
+          <span className="dock-note">// читаю манифест …</span>
+        ) : null}
 
         {job ? (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
             <span
-              style={{ fontSize: 11.5, color: job.status === 'error' ? 'var(--danger)' : 'var(--accent)' }}
+              style={{
+                fontSize: 11.5,
+                color: job.status === 'error' ? 'var(--danger)' : 'var(--accent)',
+              }}
             >
               {job.status === 'error' ? job.error : job.step}
             </span>

@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import type { ConsoleRequest, InstallRequest, ServiceConfig, Settings } from '@dock/shared';
+import type { ConsoleRequest, Settings, StackInstallRequest, StackValues } from '@dock/shared';
 import { routes } from '@dock/shared';
 import type { DockEngine } from '../core/engine';
 import { DriverError } from '../core/driver';
@@ -20,15 +20,13 @@ export async function registerHttpRoutes(app: FastifyInstance, engine: DockEngin
 
   app.get<{ Params: IdParams }>(routes.service, async (req) => engine.getService(req.params.id));
 
-  app.post<{ Params: IdParams }>(routes.serviceStart, async (req) => {
-    await engine.startService(req.params.id);
-    return engine.getService(req.params.id);
-  });
+  app.post<{ Params: IdParams }>(routes.serviceStart, async (req) => ({
+    job: await engine.startService(req.params.id),
+  }));
 
-  app.post<{ Params: IdParams }>(routes.serviceStop, async (req) => {
-    await engine.stopService(req.params.id);
-    return engine.getService(req.params.id);
-  });
+  app.post<{ Params: IdParams }>(routes.serviceStop, async (req) => ({
+    job: await engine.stopService(req.params.id),
+  }));
 
   app.post<{ Params: IdParams }>(routes.serviceRestart, async (req) => ({
     job: await engine.restartService(req.params.id),
@@ -40,31 +38,50 @@ export async function registerHttpRoutes(app: FastifyInstance, engine: DockEngin
 
   app.post(routes.pullAll, async () => ({ job: await engine.pullAll() }));
 
-  app.patch<{ Params: IdParams; Body: Partial<ServiceConfig> }>(routes.service, async (req) => ({
-    job: await engine.updateConfig(req.params.id, req.body ?? {}),
+  /** Форма вкладки «конфиг»: манифест стека и текущие значения инпутов. */
+  app.get<{ Params: IdParams }>(routes.serviceStack, async (req) =>
+    engine.installedForm(req.params.id),
+  );
+
+  app.patch<{ Params: IdParams; Body: { values?: StackValues } }>(routes.service, async (req) => ({
+    job: await engine.applyValues(req.params.id, req.body?.values ?? {}),
   }));
 
-  app.delete<{ Params: IdParams }>(routes.service, async (req, reply) => {
-    await engine.removeService(req.params.id);
-    reply.code(204);
-    return null;
-  });
-
-  app.post<{ Body: InstallRequest }>(routes.install, async (req, reply) => {
-    if (!req.body?.catalogId) throw new DriverError('не указан catalogId', 400, 'bad_request');
-    reply.code(202);
-    return { job: await engine.install(req.body) };
-  });
-
-  app.get(routes.catalog, async () => engine.getCatalog());
-
-  app.get<{ Params: IdParams }>(routes.catalogCompose, async (req) => ({
-    compose: engine.catalogCompose(req.params.id),
-  }));
+  app.delete<{ Params: IdParams; Querystring: { purge?: string } }>(
+    routes.service,
+    async (req, reply) => {
+      const purge = req.query.purge === '1' || req.query.purge === 'true';
+      reply.code(202);
+      return { job: await engine.removeService(req.params.id, purge) };
+    },
+  );
 
   app.get<{ Params: IdParams }>(routes.serviceCompose, async (req) => ({
-    compose: engine.serviceCompose(req.params.id),
+    compose: await engine.serviceCompose(req.params.id),
   }));
+
+  app.get(routes.catalog, async () => ({
+    catalog: engine.getCatalog(),
+    source: engine.getCatalogSource(),
+  }));
+
+  app.post(routes.catalogRefresh, async () => ({
+    catalog: await engine.refreshCatalog(),
+    source: engine.getCatalogSource(),
+  }));
+
+  /** Манифест и значения по умолчанию — форма установки. */
+  app.get<{ Params: IdParams }>(routes.catalogStack, async (req) => engine.stackForm(req.params.id));
+
+  app.get<{ Params: IdParams }>(routes.catalogCompose, async (req) => ({
+    compose: await engine.catalogCompose(req.params.id),
+  }));
+
+  app.post<{ Body: StackInstallRequest }>(routes.install, async (req, reply) => {
+    if (!req.body?.stackId) throw new DriverError('не указан stackId', 400, 'bad_request');
+    reply.code(202);
+    return { job: await engine.install(req.body.stackId, req.body.values ?? {}) };
+  });
 
   app.get<{ Querystring: { svc?: string; limit?: string } }>(routes.logs, async (req) => {
     const limit = Number(req.query.limit) || 200;

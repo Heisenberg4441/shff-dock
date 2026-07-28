@@ -203,6 +203,55 @@
   color: var(--muted);
 }
 
+/* список контейнеров стека */
+.containers {
+  display: flex;
+  flex-direction: column;
+  padding-top: 4px;
+}
+
+.container-row {
+  display: grid;
+  grid-template-columns: 140px 92px 1fr 90px 130px 90px;
+  gap: var(--sp-3);
+  align-items: center;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-caption);
+  color: var(--text);
+}
+
+.container-row:first-child {
+  border-top: none;
+}
+
+.container-row .svc {
+  color: var(--ink-bright);
+  font-weight: var(--fw-semi);
+}
+
+.container-row .img {
+  color: var(--muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.container-row .num {
+  color: var(--muted);
+  text-align: right;
+}
+
+@media (max-width: 960px) {
+  .container-row {
+    grid-template-columns: 1fr auto;
+  }
+  .container-row .img,
+  .container-row .num:nth-of-type(2) {
+    display: none;
+  }
+}
+
 /* строки журнала */
 .log-line {
   display: flex;

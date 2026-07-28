@@ -1,14 +1,14 @@
 import type {
   BootstrapResponse,
-  CatalogItem,
+  CatalogResponse,
   ConsoleResult,
   HostStats,
-  InstallRequest,
   Job,
   LogEntry,
   Service,
-  ServiceConfig,
   Settings,
+  StackFormResponse,
+  StackValues,
 } from '@dock/shared';
 import { API_PREFIX, routes, withParams } from '@dock/shared';
 
@@ -54,29 +54,38 @@ export const api = {
   services: () => request<{ services: Service[] }>(routes.services),
   service: (id: string) => request<Service>(withParams(routes.service, { id })),
 
-  start: (id: string) => post<Service>(withParams(routes.serviceStart, { id })),
-  stop: (id: string) => post<Service>(withParams(routes.serviceStop, { id })),
+  start: (id: string) => post<{ job: Job }>(withParams(routes.serviceStart, { id })),
+  stop: (id: string) => post<{ job: Job }>(withParams(routes.serviceStop, { id })),
   restart: (id: string) => post<{ job: Job }>(withParams(routes.serviceRestart, { id })),
   pull: (id: string) => post<{ job: Job }>(withParams(routes.servicePull, { id })),
   pullAll: () => post<{ job: Job }>(routes.pullAll),
 
-  saveConfig: (id: string, config: Partial<ServiceConfig>) =>
+  /** Форма вкладки «конфиг»: манифест стека и текущие значения. */
+  stackForm: (id: string) => request<StackFormResponse>(withParams(routes.serviceStack, { id })),
+
+  saveValues: (id: string, values: StackValues) =>
     request<{ job: Job }>(withParams(routes.service, { id }), {
       method: 'PATCH',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(config),
+      body: JSON.stringify({ values }),
     }),
 
-  remove: (id: string) =>
-    request<void>(withParams(routes.service, { id }), { method: 'DELETE' }),
+  remove: (id: string, purge = false) =>
+    request<{ job: Job }>(`${withParams(routes.service, { id })}${purge ? '?purge=1' : ''}`, {
+      method: 'DELETE',
+    }),
 
-  install: (req: InstallRequest) => post<{ job: Job }>(routes.install, req),
-
-  catalog: () => request<CatalogItem[]>(routes.catalog),
+  catalog: () => request<CatalogResponse>(routes.catalog),
+  refreshCatalog: () => post<CatalogResponse>(routes.catalogRefresh),
+  /** Манифест и значения по умолчанию для формы установки. */
+  catalogForm: (id: string) => request<StackFormResponse>(withParams(routes.catalogStack, { id })),
   catalogCompose: (id: string) =>
     request<{ compose: string }>(withParams(routes.catalogCompose, { id })),
   serviceCompose: (id: string) =>
     request<{ compose: string }>(withParams(routes.serviceCompose, { id })),
+
+  install: (stackId: string, values: StackValues) =>
+    post<{ job: Job }>(routes.install, { stackId, values }),
 
   logs: (svc?: string, limit = 200) =>
     request<{ logs: LogEntry[] }>(

@@ -1,6 +1,6 @@
 import { createContext, useCallback, useContext, useMemo, useState } from 'react';
 import type { ReactNode } from 'react';
-import type { CatalogItem } from '@dock/shared';
+import type { RegistryEntry } from '@dock/shared';
 
 export interface ConfirmRequest {
   title: string;
@@ -12,7 +12,7 @@ export interface ConfirmRequest {
 
 interface UiState {
   confirm: ConfirmRequest | null;
-  installItem: CatalogItem | null;
+  installItem: RegistryEntry | null;
   composeId: { kind: 'catalog' | 'service'; id: string } | null;
   ptyOpen: boolean;
 }
@@ -20,7 +20,7 @@ interface UiState {
 interface UiValue extends UiState {
   ask(request: ConfirmRequest): void;
   closeConfirm(): void;
-  openInstall(item: CatalogItem): void;
+  openInstall(item: RegistryEntry): void;
   closeInstall(): void;
   openCompose(kind: 'catalog' | 'service', id: string): void;
   closeCompose(): void;
