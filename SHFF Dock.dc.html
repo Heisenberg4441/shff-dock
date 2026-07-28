@@ -1,0 +1,702 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><script src="./ds-base.js"></script><style>body{margin:0;background:var(--bg);color:var(--text);font-family:var(--mono)}a{color:var(--accent);text-decoration:none}a:hover{color:var(--ink-bright)}</style></helmet>
+<div data-theme="dock" data-crt="{{ crtMode }}" style="min-height:100vh;display:flex;flex-direction:column;background:var(--bg);position:relative">
+<sc-if value="{{ crtOn }}" hint-placeholder-val="{{ true }}"><div class="scanlines"></div></sc-if>
+
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Topbar" brand="DOCK" brand-suffix="{{ hostLabel }}" items="{{ nav }}" current="{{ currentNav }}" href="#services" onBurger="{{ toggleMenu }}" hint-size="100%,56px"></x-import>
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.MobileMenu" items="{{ nav }}" open="{{ menuOpen }}" hint-size="100%,0"></x-import>
+
+<div style="width:100%;max-width:1200px;margin:0 auto;padding:0 28px 58px;flex:1;position:relative;z-index:1">
+
+<!-- ============ SERVICES ============ -->
+<sc-if value="{{ isServices }}" hint-placeholder-val="{{ true }}">
+<div>
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.PageHead" kicker="$ dock ps" title="Сервисы" lede="Всё, что крутится на твоём железе. Один compose-файл на каждый контейнер." hint-size="100%,150px"></x-import>
+
+<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;padding-bottom:26px">
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Panel" hint-size="100%,86px"><div style="display:flex;flex-direction:column;gap:7px"><span style="font-size:10.5px;letter-spacing:1.4px;color:var(--faint)">CPU</span><span style="font-size:22px;color:var(--ink-bright);font-weight:700">{{ hostCpu }}</span><x-import component-from-global-scope="SHFFDesignSystem_97e1cc.ProgressBar" value="{{ hostCpuPct }}" hint-size="100%,4px"></x-import></div></x-import>
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Panel" hint-size="100%,86px"><div style="display:flex;flex-direction:column;gap:7px"><span style="font-size:10.5px;letter-spacing:1.4px;color:var(--faint)">RAM</span><span style="font-size:22px;color:var(--ink-bright);font-weight:700">{{ hostRam }}</span><x-import component-from-global-scope="SHFFDesignSystem_97e1cc.ProgressBar" value="{{ hostRamPct }}" hint-size="100%,4px"></x-import></div></x-import>
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Panel" hint-size="100%,86px"><div style="display:flex;flex-direction:column;gap:7px"><span style="font-size:10.5px;letter-spacing:1.4px;color:var(--faint)">ДИСК</span><span style="font-size:22px;color:var(--ink-bright);font-weight:700">{{ hostDisk }}</span><x-import component-from-global-scope="SHFFDesignSystem_97e1cc.ProgressBar" value="{{ hostDiskPct }}" hint-size="100%,4px"></x-import></div></x-import>
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Panel" hint-size="100%,86px"><div style="display:flex;flex-direction:column;gap:7px"><span style="font-size:10.5px;letter-spacing:1.4px;color:var(--faint)">UPTIME</span><span style="font-size:22px;color:var(--ink-bright);font-weight:700">{{ hostUptime }}</span><span style="font-size:11px;color:var(--faint)">// с последней перезагрузки</span></div></x-import>
+</div>
+
+<div style="display:flex;gap:12px;align-items:center;padding-bottom:20px;flex-wrap:wrap">
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Button" variant="primary" onClick="{{ goCatalog }}" hint-size="190px,34px">Установить сервис</x-import>
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Button" variant="ghost" size="sm" onClick="{{ pullAll }}" hint-size="120px,28px">обновить всё</x-import>
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Button" variant="ghost" size="sm" onClick="{{ openPty }}" hint-size="100px,28px">консоль</x-import>
+<span style="font-size:10.5px;color:var(--faint)">{{ servicesNote }}</span>
+</div>
+
+<div style="display:grid;grid-template-columns:repeat(2,1fr);gap:16px">
+<sc-for list="{{ services }}" as="s" hint-placeholder-count="4">
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Panel" interactive="{{ true }}" hint-size="100%,190px">
+<div style="display:flex;flex-direction:column;gap:13px">
+<div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px">
+<div style="display:flex;flex-direction:column;gap:4px">
+<a href="{{ s.href }}" style="font-size:17px;font-weight:700;color:var(--ink-bright);letter-spacing:-0.3px">{{ s.name }}</a>
+<span style="font-size:12.5px;color:var(--muted)">{{ s.desc }}</span>
+</div>
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Badge" tone="{{ s.tone }}" led="{{ true }}" hint-size="90px,20px">{{ s.status }}</x-import>
+</div>
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;padding:11px 0;border-top:1px solid var(--border);border-bottom:1px solid var(--border)">
+<div style="display:flex;flex-direction:column;gap:3px"><span style="font-size:10px;letter-spacing:1.2px;color:var(--faint)">ПОРТ</span><span style="font-size:12.5px;color:var(--text)">{{ s.port }}</span></div>
+<div style="display:flex;flex-direction:column;gap:3px"><span style="font-size:10px;letter-spacing:1.2px;color:var(--faint)">CPU / RAM</span><span style="font-size:12.5px;color:var(--text)">{{ s.usage }}</span></div>
+<div style="display:flex;flex-direction:column;gap:3px"><span style="font-size:10px;letter-spacing:1.2px;color:var(--faint)">UPTIME</span><span style="font-size:12.5px;color:var(--text)">{{ s.uptime }}</span></div>
+</div>
+<div style="display:flex;gap:8px;flex-wrap:wrap">
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Button" variant="ghost" size="sm" onClick="{{ s.onToggle }}" hint-size="100px,28px">{{ s.toggleLabel }}</x-import>
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Button" variant="ghost" size="sm" onClick="{{ s.onRestart }}" hint-size="110px,28px">перезапустить</x-import>
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Button" variant="ghost" size="sm" onClick="{{ s.onLogs }}" hint-size="80px,28px">журнал</x-import>
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Button" variant="ghost" size="sm" onClick="{{ s.onOpen }}" hint-size="80px,28px">детали</x-import>
+</div>
+</div>
+</x-import>
+</sc-for>
+</div>
+</div>
+</sc-if>
+
+<!-- ============ SERVICE DETAIL ============ -->
+<sc-if value="{{ isDetail }}" hint-placeholder-val="{{ false }}">
+<div>
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.PageHead" kicker="{{ detailKicker }}" title="{{ detailName }}" lede="{{ detailDesc }}" crumbs="{{ crumbs }}" hint-size="100%,170px"></x-import>
+<div style="display:flex;gap:10px;align-items:center;padding-bottom:18px;flex-wrap:wrap">
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Badge" tone="{{ detailTone }}" led="{{ true }}" hint-size="90px,20px">{{ detailStatus }}</x-import>
+<span style="font-size:11px;color:var(--faint)">{{ detailImage }}</span>
+</div>
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Tabs" items="{{ detailTabs }}" value="{{ detailTab }}" onChange="{{ setDetailTab }}" hint-size="100%,40px"></x-import>
+
+<sc-if value="{{ isTabOverview }}" hint-placeholder-val="{{ true }}">
+<div style="display:grid;grid-template-columns:1.1fr 1fr;gap:16px;padding-top:22px">
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.SpecCard" title="// spec" rows="{{ detailSpec }}" hint-size="100%,240px"></x-import>
+<div style="display:flex;flex-direction:column;gap:16px">
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Panel" title="Ресурсы" hint-size="100%,150px">
+<div style="display:flex;flex-direction:column;gap:14px;padding-top:4px">
+<div style="display:flex;flex-direction:column;gap:6px"><div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted)"><span>cpu</span><span>{{ detailCpu }}</span></div><x-import component-from-global-scope="SHFFDesignSystem_97e1cc.ProgressBar" value="{{ detailCpuPct }}" hint-size="100%,4px"></x-import></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted)"><span>память</span><span>{{ detailMem }}</span></div><x-import component-from-global-scope="SHFFDesignSystem_97e1cc.ProgressBar" value="{{ detailMemPct }}" hint-size="100%,4px"></x-import></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted)"><span>том</span><span>{{ detailVol }}</span></div><x-import component-from-global-scope="SHFFDesignSystem_97e1cc.ProgressBar" value="{{ detailVolPct }}" hint-size="100%,4px"></x-import></div>
+</div>
+</x-import>
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Panel" title="Действия" hint-size="100%,150px">
+<div style="display:flex;gap:8px;flex-wrap:wrap;padding-top:6px">
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Button" variant="primary" size="sm" onClick="{{ detailToggle }}" hint-size="110px,28px">{{ detailToggleLabel }}</x-import>
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Button" variant="ghost" size="sm" onClick="{{ detailRestart }}" hint-size="120px,28px">перезапустить</x-import>
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Button" variant="ghost" size="sm" onClick="{{ detailPull }}" hint-size="100px,28px">обновить образ</x-import>
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Button" variant="danger" size="sm" onClick="{{ askRemove }}" hint-size="90px,28px">удалить</x-import>
+</div>
+</x-import>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isTabConfig }}" hint-placeholder-val="{{ false }}">
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px 22px;padding-top:22px;max-width:840px">
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Field" label="Порт на хосте" hint="// прокинется как host:container" hint-size="100%,70px"><x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Input" value="{{ cfgPort }}" onChange="{{ onCfgPort }}" hint-size="100%,38px"></x-import></x-import>
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Field" label="Домен" hint="// caddy выпишет сертификат сам" hint-size="100%,70px"><x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Input" value="{{ cfgDomain }}" onChange="{{ onCfgDomain }}" hint-size="100%,38px"></x-import></x-import>
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Field" label="Том с данными" hint-size="100%,70px"><x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Input" prompt="~" value="{{ cfgVolume }}" onChange="{{ onCfgVolume }}" hint-size="100%,38px"></x-import></x-import>
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Field" label="Политика перезапуска" hint-size="100%,70px"><x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Select" options="{{ restartOptions }}" value="{{ cfgRestart }}" onChange="{{ onCfgRestart }}" hint-size="100%,38px"></x-import></x-import>
+<div style="grid-column:1 / -1"><x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Field" label="Переменные окружения" hint="// одна пара KEY=value на строку" hint-size="100%,140px"><x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Input" multiline="{{ true }}" value="{{ cfgEnv }}" onChange="{{ onCfgEnv }}" hint-size="100%,100px"></x-import></x-import></div>
+<div style="grid-column:1 / -1;display:flex;gap:24px;flex-wrap:wrap;padding:4px 0 6px">
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Switch" label="автозапуск при старте хоста" checked="{{ cfgAutostart }}" onChange="{{ onCfgAutostart }}" showState="{{ true }}" hint-size="240px,22px"></x-import>
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Switch" label="включить в ночной бэкап" checked="{{ cfgBackup }}" onChange="{{ onCfgBackup }}" showState="{{ true }}" hint-size="240px,22px"></x-import>
+</div>
+<div style="grid-column:1 / -1;display:flex;gap:10px;padding-top:4px;border-top:1px solid var(--border);padding-top:18px">
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Button" variant="primary" size="sm" onClick="{{ saveConfig }}" hint-size="150px,28px">применить и перезапустить</x-import>
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Button" variant="ghost" size="sm" onClick="{{ resetConfig }}" hint-size="90px,28px">сбросить</x-import>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isTabLogs }}" hint-placeholder-val="{{ false }}">
+<div style="padding-top:22px">
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.TerminalWindow" title="{{ detailTermTitle }}" minHeight="{{ 320 }}" hint-size="100%,320px">
+<div style="font-size:13px;line-height:1.85">
+<sc-for list="{{ detailLogs }}" as="l" hint-placeholder-count="6">
+<div style="display:flex;gap:12px"><span style="color:var(--faint);flex:none">{{ l.ts }}</span><span style="color:{{ l.color }}">{{ l.text }}</span></div>
+</sc-for>
+<div><span style="color:var(--accent)">{{ ps1 }}</span> <x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Caret" hint-size="9px,15px"></x-import></div>
+</div>
+</x-import>
+</div>
+</sc-if>
+</div>
+</sc-if>
+
+<!-- ============ CATALOG ============ -->
+<sc-if value="{{ isCatalog }}" hint-placeholder-val="{{ false }}">
+<div>
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.PageHead" kicker="$ dock search" title="Каталог" lede="Проверенные образы с готовым compose. Ставится одной командой, данные остаются у тебя." hint-size="100%,150px"></x-import>
+<div style="display:flex;gap:14px;align-items:center;padding-bottom:16px;flex-wrap:wrap">
+<div style="min-width:280px;flex:1;max-width:380px"><x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Input" prompt="$" placeholder="искать сервис…" value="{{ query }}" onChange="{{ onQuery }}" hint-size="100%,38px"></x-import></div>
+<div style="display:flex;gap:8px;flex-wrap:wrap">
+<sc-for list="{{ catChips }}" as="c" hint-placeholder-count="5">
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Chip" active="{{ c.active }}" onClick="{{ c.onClick }}" hint-size="90px,26px">{{ c.label }}</x-import>
+</sc-for>
+</div>
+<span style="font-size:10.5px;color:var(--faint)">{{ catalogNote }}</span>
+</div>
+<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px">
+<sc-for list="{{ catalogList }}" as="c" hint-placeholder-count="6">
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Panel" interactive="{{ true }}" hint-size="100%,180px">
+<div style="display:flex;flex-direction:column;gap:11px;height:100%">
+<div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+<span style="font-size:16px;font-weight:700;color:var(--ink-bright)">{{ c.name }}</span>
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Badge" tone="note" hint-size="70px,20px">{{ c.cat }}</x-import>
+</div>
+<span style="font-size:12.5px;color:var(--muted);line-height:1.6;flex:1;text-wrap:pretty">{{ c.desc }}</span>
+<span style="font-size:11px;color:var(--faint)">{{ c.meta }}</span>
+<div style="display:flex;gap:8px;padding-top:2px">
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Button" variant="{{ c.btnVariant }}" size="sm" onClick="{{ c.onAction }}" hint-size="110px,28px">{{ c.btnLabel }}</x-import>
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Button" variant="ghost" size="sm" onClick="{{ c.onSpec }}" hint-size="80px,28px">compose</x-import>
+</div>
+</div>
+</x-import>
+</sc-for>
+</div>
+<sc-if value="{{ catalogEmpty }}" hint-placeholder-val="{{ false }}">
+<div style="padding:40px 0;text-align:center;font-size:13px;color:var(--faint)">// по этому запросу пока пусто</div>
+</sc-if>
+</div>
+</sc-if>
+
+<!-- ============ LOGS ============ -->
+<sc-if value="{{ isLogs }}" hint-placeholder-val="{{ false }}">
+<div>
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.PageHead" kicker="$ dock logs -f" title="Журнал" lede="Общий поток со всех контейнеров. Ничего не уходит наружу — файл лежит в ~/dock/logs." hint-size="100%,150px"></x-import>
+<div style="display:flex;gap:14px;align-items:center;padding-bottom:16px;flex-wrap:wrap">
+<div style="display:flex;gap:8px;flex-wrap:wrap">
+<sc-for list="{{ logChips }}" as="c" hint-placeholder-count="5">
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Chip" active="{{ c.active }}" onClick="{{ c.onClick }}" hint-size="90px,26px">{{ c.label }}</x-import>
+</sc-for>
+</div>
+<div style="margin-left:auto;display:flex;gap:14px;align-items:center">
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Switch" label="поток" checked="{{ streaming }}" onChange="{{ toggleStream }}" showState="{{ true }}" hint-size="130px,22px"></x-import>
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Button" variant="ghost" size="sm" onClick="{{ clearLogs }}" hint-size="90px,28px">очистить</x-import>
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Button" variant="ghost" size="sm" onClick="{{ openPty }}" hint-size="90px,28px">консоль</x-import>
+</div>
+</div>
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.TerminalWindow" title="{{ logsTermTitle }}" minHeight="{{ 420 }}" hint-size="100%,420px">
+<div style="font-size:13px;line-height:1.85">
+<sc-for list="{{ visibleLogs }}" as="l" hint-placeholder-count="10">
+<div style="display:flex;gap:12px"><span style="color:var(--faint);flex:none">{{ l.ts }}</span><span style="color:var(--muted);flex:none;min-width:96px">{{ l.svc }}</span><span style="color:{{ l.color }}">{{ l.text }}</span></div>
+</sc-for>
+<div><span style="color:var(--accent)">{{ ps1 }}</span> <x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Caret" hint-size="9px,15px"></x-import></div>
+</div>
+</x-import>
+</div>
+</sc-if>
+
+<!-- ============ SETTINGS ============ -->
+<sc-if value="{{ isSettings }}" hint-placeholder-val="{{ false }}">
+<div>
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.PageHead" kicker="$ dock config edit" title="Настройки" lede="Всё, что здесь меняется, ложится в один файл ~/dock/dock.yml." hint-size="100%,150px"></x-import>
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Tabs" items="{{ setTabs }}" value="{{ setTab }}" onChange="{{ setSetTab }}" boxed="{{ true }}" hint-size="100%,40px"></x-import>
+
+<sc-if value="{{ isSetHost }}" hint-placeholder-val="{{ true }}">
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px 22px;padding-top:22px;max-width:840px">
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Field" label="Имя хоста" required="{{ true }}" hint-size="100%,70px"><x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Input" value="{{ setHostname }}" onChange="{{ onHostname }}" hint-size="100%,38px"></x-import></x-import>
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Field" label="Базовый домен" hint="// поддомены выдаются по имени сервиса" hint-size="100%,70px"><x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Input" value="{{ setDomain }}" onChange="{{ onDomain }}" hint-size="100%,38px"></x-import></x-import>
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Field" label="Часовой пояс" hint-size="100%,70px"><x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Select" options="{{ tzOptions }}" value="{{ setTz }}" onChange="{{ onTz }}" hint-size="100%,38px"></x-import></x-import>
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Field" label="Каталог данных" hint-size="100%,70px"><x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Input" prompt="~" value="{{ setRoot }}" onChange="{{ onRoot }}" hint-size="100%,38px"></x-import></x-import>
+<div style="grid-column:1 / -1;display:flex;flex-direction:column;gap:14px;padding-top:6px">
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Switch" label="автообновление образов раз в неделю" checked="{{ setAutoUpdate }}" onChange="{{ onAutoUpdate }}" showState="{{ true }}" hint-size="320px,22px"></x-import>
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Switch" label="скан-линии в интерфейсе" checked="{{ crtOn }}" onChange="{{ onCrt }}" showState="{{ true }}" hint-size="320px,22px"></x-import>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isSetNet }}" hint-placeholder-val="{{ false }}">
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px 22px;padding-top:22px;max-width:840px">
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Field" label="Reverse proxy" hint-size="100%,70px"><x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Select" options="{{ proxyOptions }}" value="{{ setProxy }}" onChange="{{ onProxy }}" hint-size="100%,38px"></x-import></x-import>
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Field" label="Порт панели" hint-size="100%,70px"><x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Input" value="{{ setPanelPort }}" onChange="{{ onPanelPort }}" hint-size="100%,38px"></x-import></x-import>
+<div style="grid-column:1 / -1;display:flex;flex-direction:column;gap:14px">
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Switch" label="выпускать сертификаты let's encrypt" checked="{{ setTls }}" onChange="{{ onTls }}" showState="{{ true }}" hint-size="320px,22px"></x-import>
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Switch" label="пускать только из локальной сети" checked="{{ setLanOnly }}" onChange="{{ onLanOnly }}" showState="{{ true }}" hint-size="320px,22px"></x-import>
+</div>
+<div style="grid-column:1 / -1"><x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Callout" tone="note" hint-size="100%,80px">Панель слушает только на loopback, наружу её отдаёт caddy. Если выключить прокси, доступ останется только по IP в локалке.</x-import></div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isSetBackup }}" hint-placeholder-val="{{ false }}">
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px 22px;padding-top:22px;max-width:840px">
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Field" label="Расписание" hint="// cron-выражение" hint-size="100%,70px"><x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Input" value="{{ setCron }}" onChange="{{ onCron }}" hint-size="100%,38px"></x-import></x-import>
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Field" label="Хранить копий" hint-size="100%,70px"><x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Select" options="{{ keepOptions }}" value="{{ setKeep }}" onChange="{{ onKeep }}" hint-size="100%,38px"></x-import></x-import>
+<div style="grid-column:1 / -1"><x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Field" label="Куда складывать" hint="// локальный диск или свой s3" hint-size="100%,70px"><x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Input" prompt="~" value="{{ setBackupPath }}" onChange="{{ onBackupPath }}" hint-size="100%,38px"></x-import></x-import></div>
+<div style="grid-column:1 / -1;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Button" variant="ghost" size="sm" onClick="{{ runBackup }}" hint-size="140px,28px">запустить бэкап сейчас</x-import>
+<span style="font-size:11px;color:var(--faint)">{{ lastBackup }}</span>
+</div>
+</div>
+</sc-if>
+
+<sc-if value="{{ isSetAccess }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;flex-direction:column;gap:18px;padding-top:22px;max-width:840px">
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:16px 22px">
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Field" label="Оператор" hint-size="100%,70px"><x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Input" value="{{ setOperator }}" onChange="{{ onOperator }}" hint-size="100%,38px"></x-import></x-import>
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Field" label="Ключ ssh" hint="// ed25519, только чтение" hint-size="100%,70px"><x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Input" value="{{ setKey }}" disabled="{{ true }}" hint-size="100%,38px"></x-import></x-import>
+</div>
+<div style="display:flex;flex-direction:column;gap:12px">
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Switch" label="двухфакторный вход в панель" checked="{{ setTotp }}" onChange="{{ onTotp }}" showState="{{ true }}" hint-size="320px,22px"></x-import>
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Switch" label="писать аудит-лог действий" checked="{{ setAudit }}" onChange="{{ onAudit }}" showState="{{ true }}" hint-size="320px,22px"></x-import>
+</div>
+<div style="border-top:1px solid var(--border);padding-top:18px;display:flex;flex-direction:column;gap:12px">
+<span style="font-size:10.5px;letter-spacing:1.4px;color:var(--danger)">ОПАСНАЯ ЗОНА</span>
+<div style="display:flex;gap:10px;flex-wrap:wrap">
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Button" variant="ghost" size="sm" onClick="{{ askRestartDock }}" hint-size="140px,28px">перезапустить dock</x-import>
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Button" variant="danger" size="sm" onClick="{{ askReset }}" hint-size="140px,28px">сбросить конфиг</x-import>
+</div>
+</div>
+</div>
+</sc-if>
+
+<div style="display:flex;gap:10px;align-items:center;padding-top:26px;margin-top:22px;border-top:1px solid var(--border)">
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Button" variant="primary" onClick="{{ saveSettings }}" hint-size="170px,34px">Сохранить изменения</x-import>
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Button" variant="ghost" size="sm" onClick="{{ revertSettings }}" hint-size="90px,28px">откатить</x-import>
+<span style="font-size:10.5px;color:var(--faint)">{{ settingsNote }}</span>
+</div>
+</div>
+</sc-if>
+
+</div>
+
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Footer" brand="DOCK" blurb="{{ footBlurb }}" columns="{{ footCols }}" meta="{{ footMeta }}" hint-size="100%,240px"></x-import>
+
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Dialog" open="{{ installOpen }}" onClose="{{ closeInstall }}" barTitle="{{ installBar }}" title="{{ installTitle }}" actions="{{ installActions }}" hint-size="100%,0">
+<div style="display:flex;flex-direction:column;gap:14px">
+<span style="font-size:13px;color:var(--muted);line-height:1.65">{{ installDesc }}</span>
+<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Field" label="Порт" hint-size="100%,70px"><x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Input" value="{{ formPort }}" onChange="{{ onFormPort }}" hint-size="100%,38px"></x-import></x-import>
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Field" label="Поддомен" hint-size="100%,70px"><x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Input" value="{{ formDomain }}" onChange="{{ onFormDomain }}" hint-size="100%,38px"></x-import></x-import>
+</div>
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Field" label="Том с данными" hint-size="100%,70px"><x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Input" prompt="~" value="{{ formVolume }}" onChange="{{ onFormVolume }}" hint-size="100%,38px"></x-import></x-import>
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Checkbox" label="запускать автоматически" sublabel="restart: unless-stopped" checked="{{ formAutostart }}" onChange="{{ onFormAutostart }}" hint-size="100%,44px"></x-import>
+<sc-if value="{{ installing }}" hint-placeholder-val="{{ false }}">
+<div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:11.5px;color:var(--accent)">{{ installStep }}</span><x-import component-from-global-scope="SHFFDesignSystem_97e1cc.ProgressBar" value="{{ installPct }}" hint-size="100%,4px"></x-import></div>
+</sc-if>
+</div>
+</x-import>
+
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Dialog" open="{{ confirmOpen }}" onClose="{{ closeConfirm }}" barTitle="confirm" title="{{ confirmTitle }}" actions="{{ confirmActions }}" hint-size="100%,0">
+<span style="font-size:13px;color:var(--muted);line-height:1.65">{{ confirmBody }}</span>
+</x-import>
+
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Dialog" open="{{ composeOpen }}" onClose="{{ closeCompose }}" barTitle="{{ composeBar }}" title="compose" actions="{{ composeActions }}" hint-size="100%,0">
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.CodeBlock" lang="yaml" code="{{ composeCode }}" hint-size="100%,180px"></x-import>
+</x-import>
+
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.PtyConsole" open="{{ ptyOpen }}" onClose="{{ closePty }}" lines="{{ ptyLines }}" onSubmit="{{ ptySubmit }}" ps1="{{ ps1 }}" title="{{ ptyTitle }}" hint-size="100%,0"></x-import>
+
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.ToastStack" hint-size="0,0">
+<sc-for list="{{ toasts }}" as="t" hint-placeholder-count="0">
+<x-import component-from-global-scope="SHFFDesignSystem_97e1cc.Toast" tone="{{ t.tone }}" title="{{ t.title }}" onClose="{{ t.onClose }}" hint-size="300px,60px">{{ t.text }}</x-import>
+</sc-for>
+</x-import>
+</div>
+
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280,&quot;height&quot;:1000}}">
+const CATALOG = [
+  { id: 'gitea', name: 'gitea', cat: 'код', desc: 'Лёгкий git-хостинг: репозитории, issues, actions. Живёт в одном контейнере с sqlite.', meta: '// 180 MB · 1 контейнер', port: '3000', vol: 'dock/gitea' },
+  { id: 'nextcloud', name: 'nextcloud', cat: 'данные', desc: 'Файлы, календарь и контакты. Заменяет облачный диск целиком.', meta: '// 1.1 GB · 3 контейнера', port: '8080', vol: 'dock/nextcloud' },
+  { id: 'immich', name: 'immich', cat: 'медиа', desc: 'Фотоархив с поиском по лицам. Забирает бэкап с телефона автоматически.', meta: '// 2.4 GB · 4 контейнера', port: '2283', vol: 'dock/immich' },
+  { id: 'adguard', name: 'adguard-home', cat: 'сеть', desc: 'DNS-фильтр на весь дом. Режет рекламу и трекеры до того, как они загрузятся.', meta: '// 90 MB · 1 контейнер', port: '3080', vol: 'dock/adguard' },
+  { id: 'uptime-kuma', name: 'uptime-kuma', cat: 'сеть', desc: 'Мониторинг своих же сервисов. Пишет в телеграм, когда что-то упало.', meta: '// 320 MB · 1 контейнер', port: '3001', vol: 'dock/kuma' },
+  { id: 'paperless', name: 'paperless-ngx', cat: 'данные', desc: 'Архив бумажных документов с OCR и поиском по тексту.', meta: '// 900 MB · 3 контейнера', port: '8010', vol: 'dock/paperless' },
+  { id: 'navidrome', name: 'navidrome', cat: 'медиа', desc: 'Стриминг своей музыкальной коллекции. Совместим с subsonic-клиентами.', meta: '// 60 MB · 1 контейнер', port: '4533', vol: 'dock/navidrome' },
+  { id: 'wg-easy', name: 'wg-easy', cat: 'сеть', desc: 'WireGuard с веб-панелью: домашняя сеть в кармане за пару минут.', meta: '// 40 MB · 1 контейнер', port: '51821', vol: 'dock/wg' },
+  { id: 'vaultwarden', name: 'vaultwarden', cat: 'данные', desc: 'Менеджер паролей, совместимый с клиентами bitwarden.', meta: '// 120 MB · 1 контейнер', port: '8222', vol: 'dock/vault' }
+];
+
+const SEED_SERVICES = [
+  { id: 'jellyfin', name: 'jellyfin', desc: 'Медиасервер · транскод на iGPU', port: ':8096', status: 'running', cpu: 18, mem: 34, vol: 62, usage: '18% / 1.4 GB', uptime: '12 дней', image: 'jellyfin/jellyfin:10.9.6', domain: 'media', volume: 'dock/jellyfin', restart: 'unless-stopped', autostart: true, backup: true, env: 'JELLYFIN_PublishedServerUrl=https://media.home.lan\nTZ=Europe/Belgrade' },
+  { id: 'caddy', name: 'caddy', desc: 'Reverse proxy · автосертификаты', port: ':443', status: 'running', cpu: 3, mem: 9, vol: 4, usage: '3% / 82 MB', uptime: '31 день', image: 'caddy:2.8-alpine', domain: '—', volume: 'dock/caddy', restart: 'always', autostart: true, backup: true, env: 'ACME_AGREE=true\nTZ=Europe/Belgrade' },
+  { id: 'restic', name: 'restic', desc: 'Бэкапы · cron 03:00', port: '—', status: 'updating', cpu: 41, mem: 22, vol: 78, usage: '41% / 610 MB', uptime: '6 часов', image: 'restic/restic:0.16', domain: '—', volume: 'dock/restic', restart: 'on-failure', autostart: true, backup: false, env: 'RESTIC_REPOSITORY=/srv/backup\nTZ=Europe/Belgrade' },
+  { id: 'vaultwarden', name: 'vaultwarden', desc: 'Пароли · веб-хранилище', port: ':8222', status: 'running', cpu: 2, mem: 7, vol: 11, usage: '2% / 96 MB', uptime: '31 день', image: 'vaultwarden/server:1.32', domain: 'vault', volume: 'dock/vault', restart: 'unless-stopped', autostart: true, backup: true, env: 'SIGNUPS_ALLOWED=false\nTZ=Europe/Belgrade' },
+  { id: 'immich', name: 'immich', desc: 'Фотоархив · индексация', port: ':2283', status: 'stopped', cpu: 0, mem: 0, vol: 44, usage: '— / —', uptime: '—', image: 'ghcr.io/immich-app/server:v1.118', domain: 'photos', volume: 'dock/immich', restart: 'unless-stopped', autostart: false, backup: true, env: 'DB_PASSWORD=•••••••\nTZ=Europe/Belgrade' }
+];
+
+const TONE = { running: 'ok', updating: 'warn', stopped: 'note', error: 'danger' };
+const LEVEL_COLOR = { ok: 'var(--accent)', info: 'var(--text)', warn: 'var(--warn)', err: 'var(--danger)', dim: 'var(--muted)' };
+
+function clock() {
+  const d = new Date();
+  const p = n => String(n).padStart(2, '0');
+  return p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+}
+
+class Component extends DCLogic {
+  state = {
+    route: 'services', param: null, detailTab: 'overview', menuOpen: false,
+    services: SEED_SERVICES.map(s => ({ ...s })),
+    logs: [
+      { ts: '03:00:04', svc: 'restic', level: 'dim', text: 'snapshot 8f21ac saved · 4.2 GB' },
+      { ts: '07:42:11', svc: 'caddy', level: 'ok', text: 'certificate renewed for media.home.lan' },
+      { ts: '09:15:39', svc: 'jellyfin', level: 'info', text: 'library scan finished · 1 284 items' },
+      { ts: '11:02:58', svc: 'vaultwarden', level: 'warn', text: 'failed login from 192.168.1.44' },
+      { ts: '11:20:07', svc: 'dock', level: 'dim', text: 'image update available: restic 0.17' },
+      { ts: '11:21:33', svc: 'restic', level: 'info', text: 'pulling restic/restic:0.17 …' }
+    ],
+    toasts: [], streaming: true, logFilter: 'all',
+    query: '', cat: 'all',
+    installId: null, installing: false, installPct: 0, installStep: '',
+    form: { port: '', domain: '', volume: '', autostart: true },
+    cfg: null, confirm: null, composeId: null,
+    ptyOpen: false, ptyLines: [{ text: 'dock 0.9.2 · введи help, чтобы увидеть команды' }],
+    settings: { hostname: 'homelab', domain: 'home.lan', tz: 'Europe/Belgrade', root: 'dock', autoUpdate: true, crt: true, proxy: 'caddy', panelPort: '7788', tls: true, lanOnly: false, cron: '0 3 * * *', keep: '14 копий', backupPath: 'srv/backup', operator: 'mikhail', totp: true, audit: true },
+    saved: null, dirty: false, lastBackup: '// последний бэкап: 2026-07-28 03:00 · 4.2 GB'
+  };
+
+  componentDidMount() {
+    this.state.saved = { ...this.state.settings };
+    this.onHash = () => {
+      const h = (location.hash || '#services').slice(1);
+      const [name, param] = h.split('/');
+      this.setState({ route: name || 'services', param: param || null, menuOpen: false, detailTab: 'overview' });
+      window.scrollTo(0, 0);
+    };
+    this.onKey = e => {
+      if (e.key === '`' || e.key === '~' || e.code === 'Backquote') {
+        if (e.ctrlKey || e.metaKey) { e.preventDefault(); this.setState(s => ({ ptyOpen: !s.ptyOpen })); }
+      }
+      if (e.key === 'Escape') this.setState({ ptyOpen: false, confirm: null, composeId: null });
+    };
+    window.addEventListener('hashchange', this.onHash);
+    window.addEventListener('keydown', this.onKey);
+    if (location.hash) this.onHash();
+    this.tick = setInterval(() => {
+      if (!this.state.streaming) return;
+      const running = this.state.services.filter(s => s.status === 'running');
+      if (!running.length) return;
+      const s = running[Math.floor(Math.random() * running.length)];
+      const msgs = {
+        jellyfin: ['playback started · 1080p direct play', 'library scan · 0 new items', 'client connected · 192.168.1.31'],
+        caddy: ['GET /  200 · 4ms', 'GET /api/status  200 · 2ms', 'tls handshake ok'],
+        vaultwarden: ['vault synced · 0 conflicts', 'session refreshed'],
+        restic: ['scanning /srv/data …', 'chunker: 2.1 GB processed'],
+        immich: ['thumbnail job queued']
+      };
+      const pool = msgs[s.id] || ['heartbeat ok'];
+      this.pushLog(s.id, pool[Math.floor(Math.random() * pool.length)], 'dim');
+    }, 4200);
+  }
+  componentWillUnmount() {
+    window.removeEventListener('hashchange', this.onHash);
+    window.removeEventListener('keydown', this.onKey);
+    clearInterval(this.tick);
+    clearInterval(this.installTimer);
+  }
+
+  go(hash) { location.hash = hash; }
+  pushLog(svc, text, level) {
+    this.setState(s => ({ logs: [...s.logs, { ts: clock(), svc, text, level: level || 'info' }].slice(-140) }));
+  }
+  toast(title, text, tone) {
+    const id = Math.random().toString(36).slice(2);
+    this.setState(s => ({ toasts: [...s.toasts, { id, title, text, tone }] }));
+    setTimeout(() => this.setState(s => ({ toasts: s.toasts.filter(t => t.id !== id) })), 4200);
+  }
+  patch(id, patch) {
+    this.setState(s => ({ services: s.services.map(x => x.id === id ? { ...x, ...patch } : x) }));
+  }
+  toggleService(s) {
+    if (s.status === 'stopped') {
+      this.patch(s.id, { status: 'running', uptime: '0 минут', usage: '4% / 120 MB', cpu: 4, mem: 12 });
+      this.pushLog(s.id, 'container started · ' + s.port, 'ok');
+      this.toast('запущено', s.name + ' поднят', 'ok');
+    } else {
+      this.patch(s.id, { status: 'stopped', uptime: '—', usage: '— / —', cpu: 0, mem: 0 });
+      this.pushLog(s.id, 'container stopped', 'warn');
+      this.toast('остановлено', s.name + ' выключен', 'warn');
+    }
+  }
+  restartService(s) {
+    this.patch(s.id, { status: 'updating' });
+    this.pushLog(s.id, 'restarting …', 'warn');
+    setTimeout(() => {
+      this.patch(s.id, { status: 'running', uptime: '0 минут' });
+      this.pushLog(s.id, 'container started · ' + s.port, 'ok');
+      this.toast('перезапуск', s.name + ' снова в строю', 'ok');
+    }, 1200);
+  }
+  pull(s) {
+    this.patch(s.id, { status: 'updating' });
+    this.pushLog(s.id, 'pulling ' + s.image + ' …', 'dim');
+    setTimeout(() => {
+      this.patch(s.id, { status: 'running' });
+      this.pushLog(s.id, 'image up to date', 'ok');
+      this.toast('образ обновлён', s.name + ' на свежем теге', 'ok');
+    }, 1400);
+  }
+  startInstall() {
+    const item = CATALOG.find(c => c.id === this.state.installId);
+    if (!item) return;
+    const steps = ['подтягиваю образ …', 'создаю том …', 'поднимаю контейнер …', 'прописываю маршрут в caddy …'];
+    this.setState({ installing: true, installPct: 4, installStep: steps[0] });
+    let p = 4;
+    clearInterval(this.installTimer);
+    this.installTimer = setInterval(() => {
+      p += 7 + Math.random() * 9;
+      const step = steps[Math.min(steps.length - 1, Math.floor(p / 26))];
+      if (p >= 100) {
+        clearInterval(this.installTimer);
+        const f = this.state.form;
+        const svc = { id: item.id, name: item.name, desc: item.desc.split('.')[0], port: ':' + f.port, status: 'running', cpu: 6, mem: 14, vol: 8, usage: '6% / 180 MB', uptime: '0 минут', image: item.id + ':latest', domain: f.domain, volume: f.volume, restart: f.autostart ? 'unless-stopped' : 'no', autostart: f.autostart, backup: true, env: 'TZ=' + this.state.settings.tz };
+        this.setState(s => ({ services: [...s.services, svc], installing: false, installId: null, installPct: 100 }));
+        this.pushLog(item.id, 'container created · :' + f.port, 'ok');
+        this.toast('установлено', item.name + ' поднят на порту ' + f.port, 'ok');
+        this.go('#service/' + item.id);
+      } else {
+        this.setState({ installPct: p, installStep: step });
+      }
+    }, 420);
+  }
+
+  renderVals() {
+    const NS = window.SHFFDesignSystem_97e1cc || {};
+    const B = NS.Button;
+    const st = this.state;
+    const set = st.settings;
+    const btn = (label, opts) => B ? React.createElement(B, { size: 'sm', ...opts }, label) : null;
+    const upd = (k, v) => this.setState(s => ({ settings: { ...s.settings, [k]: v }, dirty: true }));
+    const sw = k => () => upd(k, !set[k]);
+    const txt = k => e => upd(k, e.target.value);
+
+    const svc = st.services.find(s => s.id === st.param) || null;
+    const cfg = st.cfg && svc && st.cfg.id === svc.id ? st.cfg : (svc ? { id: svc.id, port: (svc.port || '').replace(':', ''), domain: svc.domain, volume: svc.volume, restart: svc.restart, env: svc.env, autostart: svc.autostart, backup: svc.backup } : null);
+    const setCfg = (k, v) => this.setState({ cfg: { ...cfg, [k]: v } });
+
+    const installItem = CATALOG.find(c => c.id === st.installId) || null;
+    const openInstall = item => this.setState({ installId: item.id, installing: false, installPct: 0, form: { port: item.port, domain: item.id, volume: item.vol, autostart: true } });
+    const closeInstall = () => { clearInterval(this.installTimer); this.setState({ installId: null, installing: false }); };
+    const closeConfirm = () => this.setState({ confirm: null });
+
+    const catFilter = st.cat;
+    const q = st.query.trim().toLowerCase();
+    const catalogList = CATALOG.filter(c => (catFilter === 'all' || c.cat === catFilter) && (!q || c.name.includes(q) || c.desc.toLowerCase().includes(q))).map(c => {
+      const installed = st.services.some(s => s.id === c.id);
+      return { ...c, installed,
+        btnLabel: installed ? 'открыть' : 'установить',
+        btnVariant: installed ? 'ghost' : 'primary',
+        onAction: () => installed ? this.go('#service/' + c.id) : openInstall(c),
+        onSpec: () => this.setState({ composeId: c.id }) };
+    });
+
+    const cats = ['all', 'медиа', 'данные', 'сеть', 'код'];
+    const logSvcs = ['all', ...st.services.map(s => s.id)];
+    const visibleLogs = st.logs.filter(l => st.logFilter === 'all' || l.svc === st.logFilter).slice(-40).map((l, i) => ({ ...l, color: LEVEL_COLOR[l.level] || 'var(--text)', key: i }));
+
+    const running = st.services.filter(s => s.status === 'running').length;
+    const stale = st.services.filter(s => s.status === 'updating').length;
+
+    const composeItem = CATALOG.find(c => c.id === st.composeId) || null;
+
+    const confirmDo = () => { const c = st.confirm; this.setState({ confirm: null }); c && c.fn && c.fn(); };
+
+    return {
+      crtOn: set.crt, crtMode: set.crt ? 'on' : 'off',
+      hostLabel: set.operator + '@' + set.hostname,
+      ps1: set.operator + '@' + set.hostname + ':~$',
+      nav: [
+        { href: '#services', label: '~/services' },
+        { href: '#catalog', label: '~/catalog' },
+        { href: '#logs', label: '~/logs' },
+        { href: '#settings', label: '~/settings' }
+      ],
+      currentNav: st.route === 'service' ? '#services' : '#' + st.route,
+      menuOpen: st.menuOpen,
+      toggleMenu: () => this.setState(s => ({ menuOpen: !s.menuOpen })),
+
+      isServices: st.route === 'services',
+      isDetail: st.route === 'service' && !!svc,
+      isCatalog: st.route === 'catalog',
+      isLogs: st.route === 'logs',
+      isSettings: st.route === 'settings',
+
+      hostCpu: '23%', hostCpuPct: 23, hostRam: '9.4 / 32 GB', hostRamPct: 29,
+      hostDisk: '1.8 / 4 TB', hostDiskPct: 45, hostUptime: '31 день',
+      servicesNote: '// ' + running + ' запущено · ' + stale + ' в работе · ' + st.services.length + ' всего',
+      goCatalog: () => this.go('#catalog'),
+      pullAll: () => { this.pushLog('dock', 'pulling all images …', 'dim'); this.toast('обновление', 'проверяю теги для ' + st.services.length + ' сервисов', 'ok'); },
+      openPty: () => this.setState({ ptyOpen: true }),
+
+      services: st.services.map(s => ({
+        ...s,
+        href: '#service/' + s.id,
+        tone: TONE[s.status],
+        toggleLabel: s.status === 'stopped' ? 'запустить' : 'остановить',
+        onToggle: () => this.toggleService(s),
+        onRestart: () => this.restartService(s),
+        onLogs: () => { this.setState({ logFilter: s.id }); this.go('#logs'); },
+        onOpen: () => this.go('#service/' + s.id)
+      })),
+
+      crumbs: NS.Breadcrumbs && svc ? React.createElement(NS.Breadcrumbs, { items: [{ href: '#services', label: '~/services' }], current: svc.name }) : null,
+      detailKicker: svc ? '$ dock inspect ' + svc.id : '',
+      detailName: svc ? svc.name : '',
+      detailDesc: svc ? svc.desc : '',
+      detailTone: svc ? TONE[svc.status] : 'note',
+      detailStatus: svc ? svc.status : '',
+      detailImage: svc ? '// ' + svc.image : '',
+      detailTabs: [{ id: 'overview', label: 'обзор' }, { id: 'config', label: 'конфиг' }, { id: 'logs', label: 'журнал' }],
+      detailTab: st.detailTab,
+      setDetailTab: id => this.setState({ detailTab: id }),
+      isTabOverview: st.detailTab === 'overview',
+      isTabConfig: st.detailTab === 'config',
+      isTabLogs: st.detailTab === 'logs',
+      detailSpec: svc ? [
+        { label: 'образ', value: svc.image },
+        { label: 'порт', value: svc.port },
+        { label: 'домен', value: svc.domain === '—' ? '—' : svc.domain + '.' + set.domain },
+        { label: 'том', value: '~/' + svc.volume },
+        { label: 'restart', value: svc.restart },
+        { label: 'бэкап', value: svc.backup ? 'включён' : 'выключен' },
+        { label: 'uptime', value: svc.uptime }
+      ] : [],
+      detailCpu: svc ? svc.cpu + '%' : '', detailCpuPct: svc ? svc.cpu : 0,
+      detailMem: svc ? svc.mem + '%' : '', detailMemPct: svc ? svc.mem : 0,
+      detailVol: svc ? svc.vol + '%' : '', detailVolPct: svc ? svc.vol : 0,
+      detailToggleLabel: svc && svc.status === 'stopped' ? 'запустить' : 'остановить',
+      detailToggle: () => svc && this.toggleService(svc),
+      detailRestart: () => svc && this.restartService(svc),
+      detailPull: () => svc && this.pull(svc),
+      askRemove: () => svc && this.setState({ confirm: {
+        title: 'Удалить ' + svc.name + '?',
+        body: 'Контейнер и его маршрут в caddy будут удалены. Том ~/' + svc.volume + ' останется на диске — данные никуда не денутся.',
+        label: 'удалить',
+        fn: () => { this.setState(s => ({ services: s.services.filter(x => x.id !== svc.id) })); this.pushLog(svc.id, 'container removed', 'err'); this.toast('удалено', svc.name + ' снят с хоста', 'warn'); this.go('#services'); }
+      } }),
+      detailTermTitle: svc ? set.operator + '@' + set.hostname + ': ~ (' + svc.id + ')' : '',
+      detailLogs: svc ? st.logs.filter(l => l.svc === svc.id).slice(-14).map(l => ({ ...l, color: LEVEL_COLOR[l.level] || 'var(--text)' })) : [],
+
+      cfgPort: cfg ? cfg.port : '', onCfgPort: e => setCfg('port', e.target.value),
+      cfgDomain: cfg ? cfg.domain : '', onCfgDomain: e => setCfg('domain', e.target.value),
+      cfgVolume: cfg ? cfg.volume : '', onCfgVolume: e => setCfg('volume', e.target.value),
+      cfgRestart: cfg ? cfg.restart : '', onCfgRestart: e => setCfg('restart', e.target.value),
+      cfgEnv: cfg ? cfg.env : '', onCfgEnv: e => setCfg('env', e.target.value),
+      cfgAutostart: cfg ? cfg.autostart : false, onCfgAutostart: () => setCfg('autostart', !cfg.autostart),
+      cfgBackup: cfg ? cfg.backup : false, onCfgBackup: () => setCfg('backup', !cfg.backup),
+      restartOptions: ['unless-stopped', 'always', 'on-failure', 'no'],
+      saveConfig: () => { if (!svc || !cfg) return; this.patch(svc.id, { port: ':' + cfg.port, domain: cfg.domain, volume: cfg.volume, restart: cfg.restart, env: cfg.env, autostart: cfg.autostart, backup: cfg.backup }); this.setState({ cfg: null }); this.pushLog(svc.id, 'config applied · recreating container', 'ok'); this.toast('конфиг применён', svc.name + ' перезапущен с новыми параметрами', 'ok'); },
+      resetConfig: () => { this.setState({ cfg: null }); this.toast('сброшено', 'вернул значения из dock.yml', 'note'); },
+
+      query: st.query, onQuery: e => this.setState({ query: e.target.value }),
+      catChips: cats.map(c => ({ label: c === 'all' ? 'все' : c, active: st.cat === c, onClick: () => this.setState({ cat: c }) })),
+      catalogNote: '// найдено ' + catalogList.length + ' из ' + CATALOG.length,
+      catalogList,
+      catalogEmpty: catalogList.length === 0,
+
+      logChips: logSvcs.map(id => ({ label: id === 'all' ? 'все' : id, active: st.logFilter === id, onClick: () => this.setState({ logFilter: id }) })),
+      visibleLogs,
+      streaming: st.streaming,
+      toggleStream: () => this.setState(s => ({ streaming: !s.streaming })),
+      clearLogs: () => { this.setState({ logs: [] }); this.toast('журнал очищен', 'буфер панели пуст, файл на диске цел', 'note'); },
+      logsTermTitle: set.operator + '@' + set.hostname + ': ~ (dock logs -f)',
+
+      setTabs: [{ id: 'host', label: 'хост' }, { id: 'net', label: 'сеть' }, { id: 'backup', label: 'бэкапы' }, { id: 'access', label: 'доступ' }],
+      setTab: st.setTab || 'host',
+      setSetTab: id => this.setState({ setTab: id }),
+      isSetHost: (st.setTab || 'host') === 'host',
+      isSetNet: st.setTab === 'net',
+      isSetBackup: st.setTab === 'backup',
+      isSetAccess: st.setTab === 'access',
+      setHostname: set.hostname, onHostname: txt('hostname'),
+      setDomain: set.domain, onDomain: txt('domain'),
+      setTz: set.tz, onTz: txt('tz'), tzOptions: ['Europe/Belgrade', 'Europe/Moscow', 'Europe/Berlin', 'Asia/Tbilisi', 'UTC'],
+      setRoot: set.root, onRoot: txt('root'),
+      setAutoUpdate: set.autoUpdate, onAutoUpdate: sw('autoUpdate'),
+      onCrt: sw('crt'),
+      setProxy: set.proxy, onProxy: txt('proxy'), proxyOptions: ['caddy', 'traefik', 'nginx', 'без прокси'],
+      setPanelPort: set.panelPort, onPanelPort: txt('panelPort'),
+      setTls: set.tls, onTls: sw('tls'),
+      setLanOnly: set.lanOnly, onLanOnly: sw('lanOnly'),
+      setCron: set.cron, onCron: txt('cron'),
+      setKeep: set.keep, onKeep: txt('keep'), keepOptions: ['7 копий', '14 копий', '30 копий', 'всё хранить'],
+      setBackupPath: set.backupPath, onBackupPath: txt('backupPath'),
+      lastBackup: st.lastBackup,
+      runBackup: () => { this.pushLog('restic', 'manual snapshot started …', 'dim'); this.toast('бэкап', 'restic пошёл по ~/' + set.backupPath, 'ok'); setTimeout(() => { this.pushLog('restic', 'snapshot saved · 4.3 GB', 'ok'); this.setState({ lastBackup: '// последний бэкап: только что · 4.3 GB' }); }, 1600); },
+      setOperator: set.operator, onOperator: txt('operator'),
+      setKey: 'ed25519 SHA256:9Xk…7Qa mikhail@homelab',
+      setTotp: set.totp, onTotp: sw('totp'),
+      setAudit: set.audit, onAudit: sw('audit'),
+      settingsNote: st.dirty ? '// есть несохранённые изменения' : '// всё записано в ~/dock/dock.yml',
+      saveSettings: () => { this.setState(s => ({ saved: { ...s.settings }, dirty: false })); this.pushLog('dock', 'config written to ~/dock/dock.yml', 'ok'); this.toast('сохранено', 'конфиг записан, сервисы не трогал', 'ok'); },
+      revertSettings: () => { this.setState(s => ({ settings: { ...(s.saved || s.settings) }, dirty: false })); this.toast('откат', 'вернул последний сохранённый конфиг', 'note'); },
+      askRestartDock: () => this.setState({ confirm: { title: 'Перезапустить dock?', body: 'Панель будет недоступна около 10 секунд. Контейнеры продолжат работать — перезапускается только управляющий процесс.', label: 'перезапустить', fn: () => { this.pushLog('dock', 'daemon restart requested', 'warn'); this.toast('перезапуск', 'dock вернётся через несколько секунд', 'warn'); } } }),
+      askReset: () => this.setState({ confirm: { title: 'Сбросить конфиг?', body: 'dock.yml вернётся к значениям по умолчанию. Контейнеры и тома останутся, но маршруты и домены придётся настроить заново.', label: 'сбросить', fn: () => { this.setState({ settings: { ...SEED_SETTINGS }, dirty: false }); this.toast('сброшено', 'конфиг вернулся к дефолту', 'warn'); } } }),
+
+      footBlurb: 'Панель управления своим железом. Работает локально, ничего не отправляет наружу.',
+      footCols: [
+        { title: 'ПАНЕЛЬ', links: [{ href: '#services', label: 'сервисы' }, { href: '#catalog', label: 'каталог' }, { href: '#logs', label: 'журнал' }, { href: '#settings', label: 'настройки' }] },
+        { title: 'ХОСТ', links: [{ href: '#settings', label: 'хост и домен' }, { href: '#settings', label: 'бэкапы' }, { href: '#settings', label: 'доступ' }] }
+      ],
+      footMeta: 'dock 0.9.2 · ' + set.operator + '@' + set.hostname,
+
+      installOpen: !!installItem,
+      installBar: installItem ? set.operator + '@' + set.hostname + ': ~' : 'confirm',
+      installTitle: installItem ? 'Установить ' + installItem.name : '',
+      installDesc: installItem ? installItem.desc + ' Один compose-файл, одна команда. Данные останутся на твоём диске.' : '',
+      closeInstall,
+      formPort: st.form.port, onFormPort: e => this.setState(s => ({ form: { ...s.form, port: e.target.value } })),
+      formDomain: st.form.domain, onFormDomain: e => this.setState(s => ({ form: { ...s.form, domain: e.target.value } })),
+      formVolume: st.form.volume, onFormVolume: e => this.setState(s => ({ form: { ...s.form, volume: e.target.value } })),
+      formAutostart: st.form.autostart, onFormAutostart: () => this.setState(s => ({ form: { ...s.form, autostart: !s.form.autostart } })),
+      installing: st.installing, installPct: st.installPct, installStep: st.installStep,
+      installActions: React.createElement(React.Fragment, null,
+        btn('отмена', { variant: 'ghost', onClick: closeInstall }),
+        btn(st.installing ? 'ставлю…' : 'установить', { variant: 'primary', disabled: st.installing, onClick: () => this.startInstall() })),
+
+      confirmOpen: !!st.confirm,
+      confirmTitle: st.confirm ? st.confirm.title : '',
+      confirmBody: st.confirm ? st.confirm.body : '',
+      closeConfirm,
+      confirmActions: React.createElement(React.Fragment, null,
+        btn('отмена', { variant: 'ghost', onClick: closeConfirm }),
+        btn(st.confirm ? st.confirm.label : 'ок', { variant: 'danger', onClick: confirmDo })),
+
+      composeOpen: !!composeItem,
+      composeBar: composeItem ? '~/dock/' + composeItem.id + '/compose.yml' : '',
+      composeCode: composeItem ? 'services:\n  ' + composeItem.id + ':\n    image: ' + composeItem.id + ':latest\n    restart: unless-stopped\n    ports:\n      - "' + composeItem.port + ':' + composeItem.port + '"\n    volumes:\n      - ~/' + composeItem.vol + ':/config\n    environment:\n      TZ: ' + set.tz : '',
+      closeCompose: () => this.setState({ composeId: null }),
+      composeActions: React.createElement(React.Fragment, null,
+        btn('закрыть', { variant: 'ghost', onClick: () => this.setState({ composeId: null }) }),
+        btn('установить', { variant: 'primary', onClick: () => { const c = composeItem; this.setState({ composeId: null }); c && openInstall(c); } })),
+
+      ptyOpen: st.ptyOpen,
+      ptyTitle: set.operator + '@' + set.hostname + ': ~ (ctrl+~ переключает)',
+      ptyLines: st.ptyLines,
+      closePty: () => this.setState({ ptyOpen: false }),
+      ptySubmit: cmd => {
+        const out = [{ text: (set.operator + '@' + set.hostname + ':~$ ') + cmd, echo: true }];
+        const c = cmd.trim();
+        if (c === 'help') out.push({ text: 'dock ps · dock up <имя> · dock down <имя> · dock logs · dock config · clear' });
+        else if (c === 'clear') { this.setState({ ptyLines: [] }); return; }
+        else if (c === 'dock ps') st.services.forEach(s => out.push({ text: s.name.padEnd(16, ' ') + s.status.padEnd(12, ' ') + s.port }));
+        else if (c === 'dock logs') { this.setState({ ptyOpen: false }); this.go('#logs'); return; }
+        else if (c === 'dock config') { this.setState({ ptyOpen: false }); this.go('#settings'); return; }
+        else if (c.startsWith('dock up ') || c.startsWith('dock down ')) {
+          const id = c.split(' ')[2];
+          const target = st.services.find(s => s.id === id);
+          if (!target) out.push({ text: 'нет такого сервиса: ' + id });
+          else { this.toggleService(target); out.push({ text: (c.startsWith('dock up') ? 'started ' : 'stopped ') + id }); }
+        } else out.push({ text: 'неизвестная команда: ' + c + ' — попробуй help' });
+        this.setState(s => ({ ptyLines: [...s.ptyLines, ...out].slice(-60) }));
+      },
+
+      toasts: st.toasts.map(t => ({ ...t, onClose: () => this.setState(s => ({ toasts: s.toasts.filter(x => x.id !== t.id) })) }))
+    };
+  }
+}
+
+const SEED_SETTINGS = { hostname: 'homelab', domain: 'home.lan', tz: 'Europe/Belgrade', root: 'dock', autoUpdate: true, crt: true, proxy: 'caddy', panelPort: '7788', tls: true, lanOnly: false, cron: '0 3 * * *', keep: '14 копий', backupPath: 'srv/backup', operator: 'mikhail', totp: true, audit: true };
+
+</script>
+</body>
+</html>

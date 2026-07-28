@@ -1,0 +1,46 @@
+/* ============================================================
+   CRT layer — background bloom, scanlines, blinking caret.
+   The brand's signature. Everything scales with --crt.
+   ============================================================ */
+
+/* background bloom + vignette */
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(1200px 700px at 78% 12%, rgba(var(--accent-rgb),0.05), transparent 60%),
+    radial-gradient(900px 900px at 50% 120%, rgba(0,0,0,0.55), transparent 70%);
+}
+
+/* scanlines — one empty <div class="scanlines"> per page, first in body */
+.scanlines {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 60;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(0,0,0,0) 0px,
+    rgba(0,0,0,0) 2px,
+    rgba(0,0,0, calc(var(--crt) * 0.22)) 3px,
+    rgba(0,0,0, calc(var(--crt) * 0.22)) 3px
+  );
+  mix-blend-mode: multiply;
+  opacity: 1;
+}
+.scanlines::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(120% 120% at 50% 50%, transparent 60%, rgba(0,0,0,0.35) 100%);
+}
+
+@keyframes blink { 50% { opacity: 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  .cursor, .caret { animation: none; }
+}

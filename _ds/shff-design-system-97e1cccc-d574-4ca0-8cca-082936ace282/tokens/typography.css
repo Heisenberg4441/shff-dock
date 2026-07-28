@@ -1,0 +1,49 @@
+/* ============================================================
+   Typography — mono is the UI voice, sans is the reading voice.
+   ============================================================ */
+:root {
+  --mono: 'JetBrains Mono', ui-monospace, 'SFMono-Regular', 'Menlo', monospace; /* @kind font */
+  --sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif; /* @kind font */
+
+  /* role aliases */
+  --font-ui:    var(--mono);
+  --font-prose: var(--sans);
+  --font-code:  var(--mono);
+
+  /* size scale (exact production values) */
+  --fs-micro:    11.5px;
+  --fs-caption:  12.5px;
+  --fs-meta:     13px;
+  --fs-body-sm:  13.5px;
+  --fs-body:     14px;
+  --fs-ui:       15px;
+  --fs-base:     16px;
+  --fs-prose:    16.5px;
+  --fs-card-h:   16.5px;
+  --fs-lead:     19px;
+  --fs-h3:       18px;
+  --fs-h2:       23px;
+  --fs-h1:       clamp(28px, 4.2vw, 40px); /* @kind font */
+  --fs-page-h1:  clamp(28px, 4.4vw, 42px); /* @kind font */
+  --fs-section:  clamp(22px, 3vw, 30px); /* @kind font */
+  --fs-statement: clamp(22px, 3.4vw, 30px); /* @kind font */
+
+  /* line heights */
+  --lh-tight:  1.18; /* @kind other */
+  --lh-snug:   1.35; /* @kind other */
+  --lh-normal: 1.6; /* @kind other */
+  --lh-prose:  1.75; /* @kind other */
+  --lh-term:   1.85; /* @kind other */
+
+  /* tracking */
+  --ls-tight: -0.6px; /* @kind other */
+  --ls-snug:  -0.3px; /* @kind other */
+  --ls-caps:  1.4px; /* @kind other */
+  --ls-brand: 1px; /* @kind other */
+
+  /* weights */
+  --fw-regular: 400; /* @kind other */
+  --fw-medium:  500; /* @kind other */
+  --fw-semi:    600; /* @kind other */
+  --fw-bold:    700; /* @kind other */
+}

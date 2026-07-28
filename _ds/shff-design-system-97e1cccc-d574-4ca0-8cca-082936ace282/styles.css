@@ -1,0 +1,22 @@
+/* ============================================================
+   Self Hosted Freedom Foundation — design system entry point.
+   Consumers link THIS file only. Import list only; no rules here.
+   ============================================================ */
+
+/* foundations */
+@import url('tokens/fonts.css');
+@import url('tokens/colors.css');
+@import url('tokens/typography.css');
+@import url('tokens/layout.css');
+@import url('tokens/effects.css');
+@import url('tokens/themes.css');
+
+/* base layer */
+@import url('base/reset.css');
+@import url('base/crt.css');
+
+/* components */
+@import url('css/site.css');
+@import url('css/primitives.css');
+@import url('pages.css');
+@import url('article.css');

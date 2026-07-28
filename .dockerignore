@@ -1,0 +1,14 @@
+node_modules
+**/node_modules
+**/dist
+.git
+.gitignore
+.env
+.env.local
+data
+*.log
+*.md
+!README.md
+.idea
+.vscode
+SHFF Dock.dc.html

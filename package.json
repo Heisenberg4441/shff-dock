@@ -1,0 +1,25 @@
+{
+  "name": "shff-dock",
+  "version": "0.9.2",
+  "private": true,
+  "description": "SHFF Dock — панель управления контейнерами на своём железе",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "build": "npm run build -w @dock/shared && npm run build -w @dock/web && npm run build -w @dock/api",
+    "dev": "concurrently -n api,web -c cyan,magenta \"npm:dev:api\" \"npm:dev:web\"",
+    "dev:api": "npm run dev -w @dock/api",
+    "dev:web": "npm run dev -w @dock/web",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "start": "node apps/api/dist/server.js"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "typescript": "^5.7.3"
+  },
+  "engines": {
+    "node": ">=20.10.0"
+  }
+}

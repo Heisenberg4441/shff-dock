@@ -1,0 +1,263 @@
+/* ============================================================
+   Раскладка продукта. Компонентных стилей здесь нет — они все
+   приезжают из дизайн-системы; тут только сетки экранов Dock
+   и их поведение на брейкпоинтах системы (960px и 680px).
+   ============================================================ */
+
+.dock-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  position: relative;
+}
+
+.dock-main {
+  width: 100%;
+  max-width: var(--maxw);
+  margin: 0 auto;
+  padding: 0 var(--gutter) var(--sp-11);
+  flex: 1;
+  position: relative;
+  z-index: 1;
+}
+
+/* полоса метрик хоста */
+.dock-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--grid-gap);
+  padding-bottom: var(--sp-7);
+}
+
+.dock-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.dock-stat .k {
+  font-size: 10.5px;
+  letter-spacing: var(--ls-caps);
+  color: var(--faint);
+}
+
+.dock-stat .v {
+  font-size: 22px;
+  color: var(--ink-bright);
+  font-weight: var(--fw-bold);
+}
+
+.dock-actions {
+  display: flex;
+  gap: var(--sp-3);
+  align-items: center;
+  padding-bottom: var(--sp-5);
+  flex-wrap: wrap;
+}
+
+.dock-note {
+  font-size: 10.5px;
+  color: var(--faint);
+}
+
+.dock-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--grid-gap);
+}
+
+.dock-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--grid-gap);
+}
+
+/* карточка сервиса */
+.svc {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+}
+
+.svc-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.svc-name {
+  font-size: 17px;
+  font-weight: var(--fw-bold);
+  color: var(--ink-bright);
+  letter-spacing: var(--ls-snug);
+}
+
+.svc-desc {
+  font-size: var(--fs-caption);
+  color: var(--muted);
+}
+
+.svc-meta {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  padding: 11px 0;
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+}
+
+.svc-meta .k {
+  font-size: 10px;
+  letter-spacing: 1.2px;
+  color: var(--faint);
+}
+
+.svc-meta .v {
+  font-size: var(--fs-caption);
+  color: var(--text);
+}
+
+.svc-buttons {
+  display: flex;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+}
+
+/* карточка каталога */
+.cat-card {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  height: 100%;
+}
+
+.cat-desc {
+  font-size: var(--fs-caption);
+  color: var(--muted);
+  line-height: var(--lh-normal);
+  flex: 1;
+  text-wrap: pretty;
+}
+
+/* формы конфига и настроек */
+.dock-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--grid-gap) var(--sp-6);
+  padding-top: var(--sp-6);
+  max-width: 840px;
+}
+
+.dock-form .full {
+  grid-column: 1 / -1;
+}
+
+.dock-form .row {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.dock-form .switches {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding-top: 6px;
+}
+
+.dock-divider {
+  border-top: 1px solid var(--border);
+  padding-top: 18px;
+  margin-top: 4px;
+}
+
+/* обзор сервиса: spec слева, ресурсы и действия справа */
+.detail-grid {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  gap: var(--grid-gap);
+  padding-top: var(--sp-6);
+}
+
+.detail-side {
+  display: flex;
+  flex-direction: column;
+  gap: var(--grid-gap);
+}
+
+.meter {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.meter-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: var(--fs-body);
+  color: var(--muted);
+}
+
+/* строки журнала */
+.log-line {
+  display: flex;
+  gap: var(--sp-3);
+}
+
+.log-line .ts {
+  color: var(--faint);
+  flex: none;
+}
+
+.log-line .svc {
+  color: var(--muted);
+  flex: none;
+  min-width: 96px;
+}
+
+.term-lines {
+  font-size: var(--fs-meta);
+  line-height: var(--lh-term);
+}
+
+.dock-empty {
+  padding: 40px 0;
+  text-align: center;
+  font-size: var(--fs-meta);
+  color: var(--faint);
+}
+
+/* полоса состояния соединения с ядром */
+.dock-offline {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 10px var(--sp-4);
+  margin-bottom: var(--sp-5);
+  border: 1px solid var(--border-lit);
+  border-left: 2px solid var(--warn);
+  border-radius: var(--r-md);
+  background: var(--panel-2);
+  font-size: var(--fs-body);
+  color: var(--muted);
+}
+
+@media (max-width: 960px) {
+  .dock-stats { grid-template-columns: repeat(2, 1fr); }
+  .dock-grid-2,
+  .dock-grid-3,
+  .detail-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 680px) {
+  .dock-main { padding: 0 var(--gutter-sm) var(--sp-9); }
+  .dock-stats { grid-template-columns: 1fr; }
+  .dock-form { grid-template-columns: 1fr; }
+  .svc-meta { grid-template-columns: 1fr; }
+  .log-line .svc { min-width: 0; }
+}

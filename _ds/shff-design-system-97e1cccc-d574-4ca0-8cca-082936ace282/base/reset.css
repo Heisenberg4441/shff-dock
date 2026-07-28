@@ -1,0 +1,31 @@
+/* ============================================================
+   Base — reset, document defaults, utilities
+   ============================================================ */
+* { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: var(--fs-base);
+  line-height: var(--lh-normal);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow-x: hidden;
+}
+
+a { color: var(--accent); text-decoration: none; }
+a:hover { color: var(--accent); }
+
+::selection { background: rgba(var(--accent-rgb),0.25); color: #eafff3; }
+
+.wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 var(--gutter); position: relative; z-index: 1; }
+
+.accent { color: var(--accent); }
+.muted  { color: var(--muted); }
+.glow   { text-shadow: var(--glow-text); }
+
+@media (max-width: 680px) { .wrap { padding: 0 var(--gutter-sm); } }

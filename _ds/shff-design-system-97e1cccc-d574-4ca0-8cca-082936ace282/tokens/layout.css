@@ -1,0 +1,30 @@
+/* ============================================================
+   Layout & spacing
+   ============================================================ */
+:root {
+  --maxw:      1200px;
+  --maxw-read: 1120px;
+  --read:      680px;
+
+  --gutter:    28px;
+  --gutter-sm: 18px;
+
+  --sp-1:  4px;
+  --sp-2:  8px;
+  --sp-3:  12px;
+  --sp-4:  16px;
+  --sp-5:  20px;
+  --sp-6:  22px;
+  --sp-7:  26px;
+  --sp-8:  32px;
+  --sp-9:  40px;
+  --sp-10: 48px;
+  --sp-11: 58px;
+  --sp-12: 64px;
+
+  --topbar-h: 56px; /* @kind spacing */
+  --stick-offset: 84px; /* @kind spacing */
+
+  --grid-gap: 16px;
+  --grid-gap-lg: 44px;
+}

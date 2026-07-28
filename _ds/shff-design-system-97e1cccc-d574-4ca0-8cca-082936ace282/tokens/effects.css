@@ -1,0 +1,35 @@
+/* ============================================================
+   Effects — CRT intensity, radii, shadows, motion.
+   --crt drives glow + scanlines everywhere. Set it to 0 for a flat build.
+   ============================================================ */
+:root {
+  --crt:  0.35; /* @kind other */
+  --glow: calc(var(--crt) * 0.9); /* @kind other */
+
+  /* radii */
+  --r-xs:   2px;
+  --r-sm:   3px;
+  --r-md:   4px;
+  --r-lg:   7px;
+  --r-xl:   8px;
+  --r-pill: 20px;
+
+  /* shadows */
+  --sh-window: 0 24px 60px -24px rgba(0,0,0,0.8), inset 0 0 0 1px rgba(var(--accent-rgb),0.03);
+  --sh-overlay: 0 30px 80px -20px rgba(0,0,0,0.9), 0 0 0 1px rgba(var(--accent-rgb),0.06);
+  --sh-card-lift: 0 0 0 1px rgba(var(--accent-rgb),0.18), 0 18px 40px -28px rgba(var(--accent-rgb),0.4);
+
+  /* glows (scale with --crt) */
+  --glow-text:   0 0 calc(8px * var(--glow)) rgba(var(--accent-rgb),0.65); /* @kind shadow */
+  --glow-brand:  0 0 calc(10px * var(--glow)) rgba(var(--accent-rgb),0.6); /* @kind shadow */
+  --glow-btn:    0 0 calc(22px * var(--glow)) rgba(var(--accent-rgb),0.35); /* @kind shadow */
+  --glow-btn-hi: 0 0 calc(34px * var(--glow)) rgba(var(--accent-rgb),0.55); /* @kind shadow */
+  --glow-caret:  0 0 calc(10px * var(--glow)) rgba(var(--accent-rgb),0.7); /* @kind shadow */
+
+  /* motion */
+  --dur-fast: .14s; /* @kind other */
+  --dur:      .16s; /* @kind other */
+  --dur-slow: .2s; /* @kind other */
+  --dur-fade: .4s; /* @kind other */
+  --ease: ease; /* @kind other */
+}

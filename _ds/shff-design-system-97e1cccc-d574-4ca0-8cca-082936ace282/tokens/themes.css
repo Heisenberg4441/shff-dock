@@ -1,0 +1,47 @@
+/* ============================================================
+   Product themes — the ecosystem shares one core and swaps the accent.
+   Apply on any wrapper: <body data-theme="dock">
+   Only the accent family + lines shift; the near-black surfaces stay,
+   so every product reads as the same family.
+   ============================================================ */
+
+/* SHFF (default, phosphor green) lives in colors.css */
+
+/* SHFF Dock — one-click self-hosted service launcher. Cyan. */
+[data-theme="dock"] {
+  --accent:      #33e0ff;
+  --accent-dim:  #2f93ad;
+  --accent-deep: #0b2530;
+  --accent-rgb:  51, 224, 255; /* @kind color */
+  --on-accent:   #041519;
+  --border:      #1c2a2e;
+  --border-lit:  #273b41;
+  --panel:       #101719;
+  --panel-2:     #0c1214;
+  --bg:          #080d0e;
+  --text:        #d4dee0;
+  --muted:       #788486;
+  --faint:       #485456;
+  --tok-str:     #8fcfd6;
+}
+
+/* Amber terminal — archival / read-only surfaces, or a third product. */
+[data-theme="amber"] {
+  --accent:      #ffb454;
+  --accent-dim:  #b07a33;
+  --accent-deep: #2e1f0b;
+  --accent-rgb:  255, 180, 84; /* @kind color */
+  --on-accent:   #1a0f02;
+  --border:      #2a231b;
+  --border-lit:  #3d3327;
+  --panel:       #181410;
+  --panel-2:     #12100c;
+  --bg:          #0d0a08;
+  --text:        #e0dad4;
+  --muted:       #867e78;
+  --faint:       #565049;
+  --warn:        #ff8f4d;
+}
+
+/* Flat mode — kills the CRT layer without touching anything else. */
+[data-crt="off"] { --crt: 0; /* @kind other */ }
