@@ -12,8 +12,9 @@ import {
   Tabs,
   TerminalWindow,
 } from '@dock/ui';
-import type { StackManifest, StackValues } from '@dock/shared';
+import type { StackManifest, StackPostInfo, StackValues } from '@dock/shared';
 import { api } from '../api/client';
+import { PostPanel } from '../components/PostPanel';
 import { StackForm } from '../components/StackForm';
 import { go } from '../hooks/useHashRoute';
 import { LEVEL_COLOR, STATUS_TONE } from '../lib/tone';
@@ -22,6 +23,7 @@ import { useUi } from '../state/ui';
 
 const TABS = [
   { id: 'overview', label: 'обзор' },
+  { id: 'access', label: 'реквизиты' },
   { id: 'config', label: 'конфиг' },
   { id: 'logs', label: 'журнал' },
 ];
@@ -42,6 +44,8 @@ export function ServiceDetailPage({ id }: { id: string }) {
   const { services, settings, logs, actions, jobFor } = useDock();
   const ui = useUi();
   const [tab, setTab] = useState('overview');
+  // undefined — ещё не запрашивали, null — стек реквизитов не оставил
+  const [post, setPost] = useState<StackPostInfo | null | undefined>(undefined);
 
   const svc = services.find((s) => s.id === id);
   const job = jobFor(id);
@@ -57,6 +61,22 @@ export function ServiceDetailPage({ id }: { id: string }) {
     setManifest(null);
     setFormError(null);
   }, [id]);
+
+  // реквизиты содержат пароли, поэтому запрашиваются только при открытии вкладки
+  useEffect(() => {
+    if (tab !== 'access' || !svc || svc.kind !== 'stack' || post !== undefined) return;
+    let alive = true;
+    void api
+      .servicePost(svc.id)
+      .then((res) => alive && setPost(res.post))
+      .catch(() => alive && setPost(null));
+    return () => {
+      alive = false;
+    };
+  }, [tab, id, svc?.kind]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // при переходе на другой сервис реквизиты прежнего показывать нельзя
+  useEffect(() => setPost(undefined), [id]);
 
   // форма конфига читается только когда её открыли — лишний запрос ни к чему
   useEffect(() => {
@@ -121,7 +141,11 @@ export function ServiceDetailPage({ id }: { id: string }) {
         )}
       </div>
 
-      <Tabs items={isStack ? TABS : TABS.filter((t) => t.id !== 'config')} value={tab} onChange={setTab} />
+      <Tabs
+        items={isStack ? TABS : TABS.filter((t) => t.id !== 'config' && t.id !== 'access')}
+        value={tab}
+        onChange={setTab}
+      />
 
       {tab === 'overview' ? (
         <>
@@ -248,6 +272,16 @@ export function ServiceDetailPage({ id }: { id: string }) {
             </div>
           ) : null}
         </>
+      ) : null}
+
+      {tab === 'access' && isStack ? (
+        <div style={{ paddingTop: 22, maxWidth: 720 }}>
+          {post === undefined ? (
+            <div className="dock-empty">// читаю реквизиты …</div>
+          ) : (
+            <PostPanel post={post} />
+          )}
+        </div>
       ) : null}
 
       {tab === 'config' && isStack ? (

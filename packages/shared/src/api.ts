@@ -107,6 +107,8 @@ export const routes = {
   serviceCompose: '/services/:id/compose',
   /** Значения инпутов установленного стека — форма вкладки «конфиг». */
   serviceStack: '/services/:id/stack',
+  /** Реквизиты доступа: адрес и заметки из манифеста с настоящими секретами. */
+  servicePost: '/services/:id/post',
   pullAll: '/services/pull-all',
 
   catalog: '/catalog',

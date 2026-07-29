@@ -116,6 +116,16 @@ export interface StackPost {
   };
 }
 
+/**
+ * Реквизиты установленного стека: тот же `post`, но с подставленными
+ * значениями. Секреты здесь настоящие — в этом весь смысл, сгенерированный
+ * пароль человек больше нигде не увидит.
+ */
+export interface StackPostInfo {
+  url?: string;
+  notes?: string;
+}
+
 /** Compose можно вписать в манифест целиком либо вынести в отдельный файл. */
 export type StackCompose = string | Record<string, unknown>;
 

@@ -19,6 +19,10 @@ PANEL_PORT="${DOCK_PANEL_PORT:-7788}"
 NETWORK="${DOCK_NETWORK:-dock}"
 DO_UPGRADE=1
 
+# Заполняется, если пользователя пришлось добавить в группу docker: про это
+# нужно сказать в самом конце, а не в середине простыни вывода.
+REGROUP_NOTE=""
+
 # ── вывод ─────────────────────────────────────────────────────────────────────
 
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
@@ -156,6 +160,27 @@ if ! docker info >/dev/null 2>&1; then
   docker info >/dev/null 2>&1 || die "демон докера не отвечает: проверьте systemctl status docker"
 fi
 
+# Сокет докера принадлежит группе docker, и без членства в ней любой docker-вызов
+# отвечает «permission denied». Скрипт работает от root и этого не замечает, а
+# человек потом упирается в отказ на первой же команде.
+DOCKER_USER="${SUDO_USER:-}"
+if [ -n "$DOCKER_USER" ] && [ "$DOCKER_USER" != "root" ]; then
+  if id -nG "$DOCKER_USER" 2>/dev/null | tr ' ' '\n' | grep -qx docker; then
+    info "$DOCKER_USER уже в группе docker"
+  else
+    step "Добавляю $DOCKER_USER в группу docker"
+    getent group docker >/dev/null 2>&1 || groupadd docker
+    if usermod -aG docker "$DOCKER_USER"; then
+      # Группы подхватываются только новой сессией: в текущей оболочке членство
+      # не появится, сколько ни перезапускай докер.
+      REGROUP_NOTE="$DOCKER_USER добавлен в группу docker — чтобы docker заработал без sudo, перезайдите в систему (или выполните: newgrp docker)"
+      info "готово; членство подхватится после перезахода"
+    else
+      warn "не вышло добавить $DOCKER_USER в группу docker — docker останется только под sudo"
+    fi
+  fi
+fi
+
 # ── раскладка ─────────────────────────────────────────────────────────────────
 
 step "Готовлю раскладку"
@@ -284,6 +309,10 @@ if [ "$READY" -eq 1 ]; then
 else
   warn "панель не ответила за две минуты — образ скачан и контейнер запущен, но здоровье не подтвердилось"
   printf '    %sжурнал: docker logs shff-dock%s\n\n' "$C_DIM" "$C_OFF"
+fi
+
+if [ -n "$REGROUP_NOTE" ]; then
+  printf '%s ! %s %s\n\n' "$C_WARN" "$C_OFF" "$REGROUP_NOTE"
 fi
 
 cat <<TXT

@@ -56,6 +56,10 @@ export async function registerHttpRoutes(app: FastifyInstance, engine: DockEngin
     },
   );
 
+  app.get<{ Params: IdParams }>(routes.servicePost, async (req) => ({
+    post: await engine.servicePost(req.params.id),
+  }));
+
   app.get<{ Params: IdParams }>(routes.serviceCompose, async (req) => ({
     compose: await engine.serviceCompose(req.params.id),
   }));

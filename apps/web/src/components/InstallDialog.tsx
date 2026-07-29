@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
 import { Button, Callout, Dialog, ProgressBar } from '@dock/ui';
-import type { StackManifest, StackValues } from '@dock/shared';
+import type { StackManifest, StackPostInfo, StackValues } from '@dock/shared';
 import { api } from '../api/client';
 import { go } from '../hooks/useHashRoute';
 import { useDock } from '../state/store';
 import { useUi } from '../state/ui';
+import { PostPanel } from './PostPanel';
 import { StackForm } from './StackForm';
 
 /**
@@ -24,18 +25,24 @@ export function InstallDialog() {
   const [busyPorts, setBusyPorts] = useState<number[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [jobId, setJobId] = useState<string | null>(null);
+  const [done, setDone] = useState(false);
+  const [post, setPost] = useState<StackPostInfo | null>(null);
 
   useEffect(() => {
     if (!entry) {
       setManifest(null);
       setJobId(null);
       setError(null);
+      setDone(false);
+      setPost(null);
       return;
     }
     let alive = true;
     setManifest(null);
     setError(null);
     setJobId(null);
+    setDone(false);
+    setPost(null);
     void api
       .catalogForm(entry.id)
       .then((form) => {
@@ -53,12 +60,20 @@ export function InstallDialog() {
   const job = jobId ? jobs.find((j) => j.id === jobId) : undefined;
   const installing = job?.status === 'running';
 
-  // задача досчитала до конца — закрываем диалог и уходим на карточку стека
+  /**
+   * Установка досчитала — показываем реквизиты, а не закрываемся.
+   *
+   * Раньше диалог просто уходил на карточку стека, и сгенерированный пароль
+   * не видел никто: он оставался только в .env на хосте. За ним приходилось
+   * лезть в консоль под sudo.
+   */
   useEffect(() => {
-    if (!entry || !job || job.status !== 'done') return;
-    ui.closeInstall();
-    actions.toast('установлено', `${entry.name} поднят`, 'ok');
-    go(`#service/${job.target}`);
+    if (!entry || !job || job.status !== 'done' || done) return;
+    setDone(true);
+    void api
+      .servicePost(job.target)
+      .then((res) => setPost(res.post))
+      .catch(() => setPost(null));
   }, [job?.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!entry) return <Dialog open={false} />;
@@ -67,6 +82,31 @@ export function InstallDialog() {
     const created = await actions.install(entry.id, values);
     if (created) setJobId(created.id);
   };
+
+  const finish = (): void => {
+    const target = job?.target ?? entry.id;
+    ui.closeInstall();
+    actions.toast('установлено', `${entry.name} поднят`, 'ok');
+    go(`#service/${target}`);
+  };
+
+  if (done) {
+    return (
+      <Dialog
+        open
+        onClose={finish}
+        barTitle={`${settings.operator}@${settings.hostname}: ~`}
+        title={`${entry.name} поднят`}
+        actions={
+          <Button variant="primary" size="sm" onClick={finish}>
+            понятно
+          </Button>
+        }
+      >
+        <PostPanel post={post} />
+      </Dialog>
+    );
+  }
 
   return (
     <Dialog

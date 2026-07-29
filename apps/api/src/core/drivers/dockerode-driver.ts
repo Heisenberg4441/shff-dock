@@ -19,6 +19,13 @@ import { clampPct, humanDuration, usageLabel } from '../format';
 import { HostMetrics, volumeFillPct } from '../host-metrics';
 import type { StackManager } from '../stacks/manager';
 
+/**
+ * Сколько строк истории забирать при подключении к журналу контейнера.
+ * Достаточно, чтобы поймать вывод первых секунд, и мало, чтобы перезапуск
+ * панели не завалил журнал историей всех контейнеров сразу.
+ */
+const LOG_BACKLOG = 50;
+
 /** Метки, которые compose сам вешает на контейнеры проекта. */
 const COMPOSE_PROJECT = 'com.docker.compose.project';
 const COMPOSE_SERVICE = 'com.docker.compose.service';
@@ -412,7 +419,11 @@ export class DockerodeDriver implements DockerDriver {
         follow: true,
         stdout: true,
         stderr: true,
-        tail: 0,
+        // Не ноль: подключаемся мы на ближайшем опросе, то есть через несколько
+        // секунд после старта контейнера, а самое важное сервисы печатают в
+        // первую секунду. Так терялся временный пароль qbittorrent — за ним
+        // приходилось идти в консоль под sudo, хотя панель для того и нужна.
+        tail: LOG_BACKLOG,
       })) as unknown as NodeJS.ReadableStream & { destroy?: () => void };
 
       const sink = lineSink((line) => this.ctx.log(serviceId, line, levelFor(line)));

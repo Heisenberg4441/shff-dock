@@ -13,6 +13,7 @@ import type {
   ServerEvent,
   Settings,
   StackManifest,
+  StackPostInfo,
   StackValues,
 } from '@dock/shared';
 import type { Config } from '../config';
@@ -26,7 +27,7 @@ import { LogBus } from './log-bus';
 import { DEFAULT_SETTINGS, SettingsStore } from './settings-store';
 import { ComposeRunner } from './stacks/compose';
 import { Layout } from './stacks/layout';
-import { StackManager } from './stacks/manager';
+import { renderPost, StackManager } from './stacks/manager';
 import { Registry } from './stacks/registry';
 
 /**
@@ -360,6 +361,24 @@ export class DockEngine {
 
   async catalogCompose(stackId: string): Promise<string> {
     return this.stacks.previewCompose(stackId);
+  }
+
+  /**
+   * Реквизиты доступа к установленному стеку. Отдаются по запросу, а не в
+   * ответе на установку: сгенерированный пароль нужен и через неделю, когда
+   * диалог давно закрыт.
+   */
+  async servicePost(id: string): Promise<StackPostInfo | null> {
+    const service = this.getService(id);
+    const stackId = service.kind === 'stack' ? service.stackId : null;
+    if (!stackId) return null;
+    if (this.config.driver === 'mock') {
+      const manifest = await this.registry.manifest(stackId);
+      return manifest.post
+        ? renderPost(manifest.post, service.env ? envToValues(service.env) : {})
+        : null;
+    }
+    return this.stacks.postInfo(stackId);
   }
 
   async serviceCompose(id: string): Promise<string> {

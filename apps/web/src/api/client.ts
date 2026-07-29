@@ -8,6 +8,7 @@ import type {
   Service,
   Settings,
   StackFormResponse,
+  StackPostInfo,
   StackValues,
 } from '@dock/shared';
 import { API_PREFIX, routes, withParams } from '@dock/shared';
@@ -83,6 +84,8 @@ export const api = {
     request<{ compose: string }>(withParams(routes.catalogCompose, { id })),
   serviceCompose: (id: string) =>
     request<{ compose: string }>(withParams(routes.serviceCompose, { id })),
+  servicePost: (id: string) =>
+    request<{ post: StackPostInfo | null }>(withParams(routes.servicePost, { id })),
 
   install: (stackId: string, values: StackValues) =>
     post<{ job: Job }>(routes.install, { stackId, values }),

@@ -1,7 +1,15 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { stringify } from 'yaml';
-import type { InstalledStack, LogLevel, Settings, StackManifest, StackValues } from '@dock/shared';
+import type {
+  InstalledStack,
+  LogLevel,
+  Settings,
+  StackManifest,
+  StackPost,
+  StackPostInfo,
+  StackValues,
+} from '@dock/shared';
 import { DriverError, NotFoundError } from '../driver';
 import type { ProgressFn } from '../driver';
 import { ComposeProgress, ComposeRunner } from './compose';
@@ -145,6 +153,27 @@ export class StackManager {
 
   async composeText(id: string): Promise<string> {
     return fs.readFile(this.layout.composePath(id), 'utf8');
+  }
+
+  /**
+   * Реквизиты установленного стека.
+   *
+   * Значения берутся из `.env` неотмаскированными, в отличие от `read`: адрес
+   * и заметки существуют ровно ради того, чтобы показать сгенерированный
+   * пароль, а маска в этом месте сделала бы блок бессмысленным.
+   */
+  async postInfo(id: string): Promise<StackPostInfo | null> {
+    let manifestRaw: string;
+    try {
+      manifestRaw = await fs.readFile(this.layout.manifestPath(id), 'utf8');
+    } catch {
+      throw new NotFoundError(id);
+    }
+    const manifest = parseManifest(manifestRaw);
+    if (!manifest.post) return null;
+
+    const values = parseEnvFile(await fs.readFile(this.layout.envPath(id), 'utf8').catch(() => ''));
+    return renderPost(manifest.post, values);
   }
 
   /** Предпросмотр compose до установки — то, что показывает диалог «compose». */
@@ -428,4 +457,29 @@ function worthLogging(line: string): boolean {
 
 function describe(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
+}
+
+/**
+ * Подстановка значений в адрес и заметки.
+ *
+ * В отличие от файлов стека, недостающая переменная здесь не ошибка: показать
+ * заметку с неразвёрнутым `${VAR}` полезнее, чем не показать ничего и оставить
+ * человека без пароля.
+ */
+export function renderPost(post: StackPost, values: StackValues): StackPostInfo {
+  const safe = (source: string | undefined): string | undefined => {
+    if (!source) return undefined;
+    try {
+      return renderTemplate(source, values);
+    } catch {
+      return source;
+    }
+  };
+
+  const info: StackPostInfo = {};
+  const url = safe(post.url);
+  const notes = safe(post.notes);
+  if (url) info.url = url;
+  if (notes) info.notes = notes;
+  return info;
 }
