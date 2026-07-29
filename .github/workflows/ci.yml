@@ -1,0 +1,35 @@
+# Проверка кода. Идёт на каждый пуш и pull request, отдельно от публикации
+# образа: сломанный тайпчек должен быть виден до того, как что-то уедет в
+# Docker Hub, а не вместо этого.
+
+name: ci
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Установка зависимостей
+        run: npm ci
+
+      # @dock/shared собирается первым: остальные воркспейсы импортируют его
+      # типы из dist, а не из исходников.
+      - name: Тайпчек
+        run: |
+          npm run build -w @dock/shared
+          npm run typecheck
+
+      - name: Сборка
+        run: npm run build

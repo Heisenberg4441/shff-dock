@@ -1,0 +1,9 @@
+# install.sh запускают через `curl | bash` прямо с гитхаба: CRLF в нём
+# превращается в «bad interpreter» на первой же строке. Ниже — гарантия, что
+# скрипты и шаблоны конфигов уезжают с LF независимо от настроек машины,
+# на которой их закоммитили.
+*.sh text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.tmpl text eol=lf
+Dockerfile text eol=lf

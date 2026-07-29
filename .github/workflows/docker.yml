@@ -1,0 +1,77 @@
+# Сборка образа и публикация на Docker Hub.
+#
+# Пуш в master уезжает в :latest — именно его тянет install.sh, поэтому в
+# master попадает то, что не стыдно поставить на чужую машину. Рядом кладётся
+# тег master-<sha>: если latest оказался сломанным, откатиться есть на что.
+#
+# Что нужно один раз завести в Settings → Secrets and variables → Actions:
+#   DOCKERHUB_USERNAME — логин на hub.docker.com
+#   DOCKERHUB_TOKEN    — Access Token оттуда же (Account Settings → Personal
+#                        access tokens), с правом Read & Write. Не пароль.
+
+name: docker
+
+on:
+  push:
+    branches: [master]
+    tags: ['v*']
+  workflow_dispatch:
+
+env:
+  IMAGE: heisenberg4441/shff-dock
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    # В форках секретов нет — там сборка образа только падала бы на логине.
+    if: github.repository_owner == 'Heisenberg4441'
+    permissions:
+      contents: read
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Панель ставят и на мини-ПК, и на одноплатники, поэтому образ
+      # мультиархитектурный. arm64 собирается через qemu и заметно дольше
+      # amd64 — на кэше это терпимо, с холодного старта считайте на полчаса.
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' }}
+            type=sha,prefix=master-,enable=${{ github.ref == 'refs/heads/master' }}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+          labels: |
+            org.opencontainers.image.title=SHFF Dock
+            org.opencontainers.image.description=Панель управления контейнерами на своём железе
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Что опубликовано
+        run: |
+          echo "### Образ опубликован" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "${{ steps.meta.outputs.tags }}" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
