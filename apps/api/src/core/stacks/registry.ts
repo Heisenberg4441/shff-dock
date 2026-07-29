@@ -18,8 +18,9 @@ class LocalProvider implements Provider {
   constructor(readonly url: string) {}
 
   async read(relative: string): Promise<string> {
-    const full = path.resolve(this.url, relative);
-    if (!full.startsWith(path.resolve(this.url))) {
+    const root = path.resolve(this.url);
+    const full = path.resolve(root, relative);
+    if (full !== root && !full.startsWith(root + path.sep)) {
       throw new DriverError(`путь ${relative} уходит за пределы реестра`, 400);
     }
     return fs.readFile(full, 'utf8');
@@ -51,7 +52,7 @@ class HttpProvider implements Provider {
   /** Кэш нужен ради одного: панель должна работать, когда гитхаб недоступен. */
   private async cache(relative: string, body: string): Promise<void> {
     try {
-      const full = path.join(this.cacheDir, relative);
+      const full = this.inCache(relative);
       await fs.mkdir(path.dirname(full), { recursive: true });
       await fs.writeFile(full, body, 'utf8');
     } catch {
@@ -60,18 +61,35 @@ class HttpProvider implements Provider {
   }
 
   async readCached(relative: string): Promise<string> {
-    return fs.readFile(path.join(this.cacheDir, relative), 'utf8');
+    return fs.readFile(this.inCache(relative), 'utf8');
+  }
+
+  /**
+   * Путь внутри кэша. Складывается он из `path` чужого registry.yaml, то есть
+   * из текста, который панель скачала из интернета, — поэтому проверяется, что
+   * запись не уходит выше кэша.
+   */
+  private inCache(relative: string): string {
+    const root = path.resolve(this.cacheDir);
+    const full = path.resolve(root, relative);
+    if (full !== root && !full.startsWith(root + path.sep)) {
+      throw new DriverError(`путь ${relative} уходит за пределы кэша реестра`, 400);
+    }
+    return full;
   }
 }
 
 /**
  * Реестр готовых стеков.
  *
- * Вшитый в образ реестр — основа: панель обязана уметь ставить сервисы сразу
- * после `docker compose up`, без сети и без гитхаба. Удалённый репозиторий
- * накладывается сверху: его стеки добавляются к вшитым, а одноимённые
- * перекрывают их — так свежая версия из репозитория выигрывает у версии,
- * замороженной в образе.
+ * Стеки живут отдельным репозиторием и приезжают по сети — в образе панели их
+ * нет, поэтому каталог пополняется коммитом в реестр, а не выкаткой новой
+ * версии панели всем подряд. Скачанное оседает в кэше на хосте: недоступный
+ * гитхаб перестаёт быть поводом не поставить сервис.
+ *
+ * Локальный каталог (`DOCK_BUNDLED_REGISTRY`) необязателен и нужен тем, кто
+ * пишет свои стеки: он идёт в основу, а удалённые стеки накладываются сверху —
+ * одноимённые перекрывают локальные, остальные добавляются.
  */
 export class Registry {
   private entries: RegistryEntry[] = [];
@@ -91,6 +109,11 @@ export class Registry {
     };
   }
 
+  /** Пустой путь — штатная ситуация: локального реестра просто нет. */
+  private get hasBundled(): boolean {
+    return this.bundledDir.trim().length > 0;
+  }
+
   source(): RegistrySource {
     return { ...this.status };
   }
@@ -106,18 +129,20 @@ export class Registry {
   }
 
   async load(): Promise<void> {
-    const bundled = new LocalProvider(this.bundledDir);
     const merged = new Map<string, RegistryEntry>();
     const providers = new Map<string, { provider: Provider; base: string }>();
 
-    try {
-      const index = await this.readIndex(bundled);
-      for (const entry of index.stacks) {
-        merged.set(entry.id, entry);
-        providers.set(entry.id, { provider: bundled, base: entry.path });
+    if (this.hasBundled) {
+      const bundled = new LocalProvider(this.bundledDir);
+      try {
+        const index = await this.readIndex(bundled);
+        for (const entry of index.stacks) {
+          merged.set(entry.id, entry);
+          providers.set(entry.id, { provider: bundled, base: entry.path });
+        }
+      } catch (err) {
+        this.log(`локальный реестр ${this.bundledDir} не прочитался: ${describe(err)}`, 'err');
       }
-    } catch (err) {
-      this.log(`вшитый реестр не прочитался: ${describe(err)}`, 'err');
     }
 
     if (this.remoteUrl) {
@@ -143,14 +168,21 @@ export class Registry {
           this.status = { kind: 'remote', url: this.remoteUrl, fetchedAt: null, error: message };
           this.log(`реестр недоступен, взял кэш: ${message}`, 'warn');
         } catch {
+          // ни сети, ни кэша: остаётся то, что нашлось на диске, а обычно ничего
           this.status = { kind: 'bundled', url: this.bundledDir, fetchedAt: null, error: message };
-          this.log(`реестр недоступен, живу на вшитом: ${message}`, 'warn');
+          this.log(`реестр недоступен и кэша нет: ${message}`, merged.size ? 'warn' : 'err');
         }
       }
     }
 
     this.entries = [...merged.values()].sort((a, b) => a.name.localeCompare(b.name));
     this.providers = providers;
+
+    // Пустой каталог выглядит как поломка панели, хотя дело в реестре, —
+    // поэтому причина проговаривается вслух, а не остаётся пустым экраном.
+    if (!this.entries.length) {
+      this.log('каталог пуст — до реестра не достучаться, ставить нечего', 'err');
+    }
   }
 
   /** Манифест стека — читается по требованию, а не при загрузке индекса. */
@@ -206,6 +238,14 @@ export class Registry {
     for (const entry of doc.stacks) {
       if (!entry.id || !entry.path) {
         throw new DriverError('registry.yaml: у каждой записи обязательны id и path', 422);
+      }
+      // path превращается и в адрес запроса, и в путь в кэше, а приезжает из
+      // чужого репозитория — поэтому только каталог относительно корня реестра
+      if (/^([a-z]+:)?[\\/]/i.test(entry.path) || /(^|[\\/])\.\.([\\/]|$)/.test(entry.path)) {
+        throw new DriverError(
+          `registry.yaml: path ${entry.path} должен быть путём внутри реестра`,
+          422,
+        );
       }
     }
     return doc;

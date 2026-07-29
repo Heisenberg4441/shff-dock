@@ -43,7 +43,6 @@ ENV NODE_ENV=production \
     DOCK_PROC_ROOT=/host/proc \
     DOCK_SYS_ROOT=/host/sys \
     DOCK_ROOTFS=/host/rootfs \
-    DOCK_BUNDLED_REGISTRY=/app/registry \
     DOCK_WEB_DIST=/app/apps/web/dist
 
 COPY package.json ./
@@ -54,9 +53,9 @@ COPY --from=build /app/packages/shared/dist ./packages/shared/dist
 COPY --from=build /app/apps/api/dist ./apps/api/dist
 COPY --from=build /app/apps/web/dist ./apps/web/dist
 
-# Реестр стеков едет внутри образа: панель обязана уметь ставить сервисы
-# сразу после запуска, без сети и без гитхаба.
-COPY registry ./registry
+# Реестра стеков в образе нет — он приезжает из отдельного репозитория и
+# кэшируется в /home/dock/registry. Поэтому каталог пополняется коммитом в
+# реестр, а не пересборкой образа и переустановкой панели у всех.
 
 EXPOSE 7788
 

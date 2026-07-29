@@ -9,7 +9,6 @@ data
 *.log
 *.md
 !README.md
-!registry/**/*.md
 .idea
 .vscode
 SHFF Dock.dc.html

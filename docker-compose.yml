@@ -3,7 +3,7 @@
 #   docker compose up -d --build
 #
 # Больше ничего готовить не нужно: /home/dock панель создаст сама, общую сеть
-# тоже, реестр готовых стеков лежит внутри образа.
+# тоже, реестр готовых стеков тянется с гитхаба и кэшируется на хосте.
 
 services:
   dock:
@@ -44,9 +44,10 @@ services:
       DOCK_PUID: ${DOCK_PUID:-1000}
       DOCK_PGID: ${DOCK_PGID:-1000}
 
-      # Свой репозиторий готовых стеков; пусто — живём на вшитом реестре.
-      # Формат: https://raw.githubusercontent.com/<owner>/<repo>/<ref>
+      # Реестр готовых стеков. В образе его нет: пусто — берётся реестр SHFF,
+      # свой подключается тем же raw-адресом гитхаба.
       DOCK_REGISTRY_URL: ${DOCK_REGISTRY_URL:-}
+      DOCK_REGISTRY_TTL: ${DOCK_REGISTRY_TTL:-60}
 
       LOG_LEVEL: ${LOG_LEVEL:-info}
 

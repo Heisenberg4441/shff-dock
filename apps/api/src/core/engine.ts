@@ -62,6 +62,7 @@ export class DockEngine {
   };
 
   private poll: NodeJS.Timeout | null = null;
+  private catalogPoll: NodeJS.Timeout | null = null;
   private refreshing = false;
 
   constructor(private readonly config: Config) {
@@ -141,11 +142,35 @@ export class DockEngine {
 
     await this.refresh();
     this.poll = setInterval(() => void this.refresh(), this.config.pollInterval);
+
+    // Реестр живёт в чужом репозитории и меняется без нашего ведома, поэтому
+    // панель перечитывает его сама. Кнопка «обновить» в каталоге остаётся —
+    // она для тех, кто только что запушил стек и не хочет ждать час.
+    const ttlMs = this.config.registryTtlMinutes * 60_000;
+    if (this.config.registryUrl && ttlMs > 0) {
+      this.catalogPoll = setInterval(() => void this.pollCatalog(), ttlMs);
+      this.catalogPoll.unref?.();
+    }
+  }
+
+  /**
+   * Плановое обновление каталога. В отличие от ручного, молчит при неудаче:
+   * `Registry.load()` уже написал в журнал, что случилось, и оставил рабочим
+   * то, что было, — ронять панель из-за отвалившегося гитхаба незачем.
+   */
+  private async pollCatalog(): Promise<void> {
+    try {
+      await this.refreshCatalog();
+    } catch (err) {
+      this.logs.push('dock', `реестр не обновился: ${describe(err)}`, 'warn');
+    }
   }
 
   async stop(): Promise<void> {
     if (this.poll) clearInterval(this.poll);
     this.poll = null;
+    if (this.catalogPoll) clearInterval(this.catalogPoll);
+    this.catalogPoll = null;
     await this.driver.dispose();
   }
 

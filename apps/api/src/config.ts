@@ -84,16 +84,28 @@ export const config = {
     config: dockRoot,
   },
 
-  /** Реестр, вшитый в образ: работает без сети и без гитхаба. */
-  bundledRegistry: str('DOCK_BUNDLED_REGISTRY', path.resolve(__dirname, '../../../registry')),
+  /**
+   * Репозиторий с готовыми стеками. В образе их нет: каталог обновляется
+   * коммитом в этот репозиторий, а не пересборкой и переустановкой панели.
+   * Формат: https://raw.githubusercontent.com/<owner>/<repo>/<ref>
+   */
+  registryUrl: str(
+    'DOCK_REGISTRY_URL',
+    'https://raw.githubusercontent.com/Heisenberg4441/shff-registry/master',
+  ),
 
   /**
-   * Репозиторий с готовыми стеками. Формат:
-   * https://raw.githubusercontent.com/<owner>/<repo>/<ref>
-   * Пусто — панель живёт на вшитом реестре.
+   * Как часто перечитывается индекс реестра, минуты. Ноль и меньше — только
+   * при старте и по кнопке в каталоге.
    */
-  registryUrl: str('DOCK_REGISTRY_URL', ''),
   registryTtlMinutes: int('DOCK_REGISTRY_TTL', 60),
+
+  /**
+   * Реестр на диске. Пусто — панель живёт на удалённом реестре и его кэше;
+   * путь имеет смысл задавать при разработке стеков и тем, кто держит свой
+   * реестр локально. Такие стеки идут в основу, удалённые накладываются сверху.
+   */
+  bundledRegistry: str('DOCK_BUNDLED_REGISTRY', ''),
 
   docker: {
     socketPath,
