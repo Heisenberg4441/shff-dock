@@ -238,6 +238,7 @@ export class MockDriver implements DockerDriver {
       DOCK_STACK_ID: id,
       DOCK_STACK_DIR: dir,
       DOCK_DATA_DIR: path.posix.join(dir, 'data'),
+      DOCK_MEDIA_DIR: this.config.paths.media,
       DOCK_NETWORK: this.config.docker.network,
       DOCK_TZ: settings.tz,
       DOCK_DOMAIN: settings.domain,

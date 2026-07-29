@@ -7,6 +7,8 @@ export interface LayoutPaths {
   registry: string;
   backups: string;
   config: string;
+  /** /home/dock/media — общая библиотека, живущая дольше любого стека. */
+  media: string;
 }
 
 /**
@@ -14,10 +16,15 @@ export interface LayoutPaths {
  *
  *   /home/dock/
  *   ├── stacks/<id>/        стек целиком: манифест, compose, .env, конфиги, data
+ *   ├── media/              общая библиотека: music, films, shows
  *   ├── registry/           кэш скачанных манифестов
  *   ├── backups/
  *   ├── dock.yml            настройки панели
  *   └── state.json          служебные отметки
+ *
+ * Медиа лежит отдельно от стеков намеренно: качалка, музыкальный сервер и
+ * медиатека — разные стеки, но библиотека у них одна, и снос любого из них
+ * не должен её задевать.
  *
  * Каталог стека самодостаточен: скопировал его на другую машину и поднял тем же
  * `docker compose up` — получил тот же сервис. Панель ничего не прячет в своей
@@ -32,7 +39,13 @@ export class Layout {
 
   /** Создаёт дерево при старте — панель не должна требовать ручной подготовки. */
   async ensure(): Promise<void> {
-    for (const dir of [this.paths.root, this.paths.stacks, this.paths.registry, this.paths.backups]) {
+    for (const dir of [
+      this.paths.root,
+      this.paths.stacks,
+      this.paths.media,
+      this.paths.registry,
+      this.paths.backups,
+    ]) {
       await fs.mkdir(dir, { recursive: true });
     }
   }
@@ -88,6 +101,23 @@ export class Layout {
     const full = path.posix.normalize(path.posix.join(base, relative));
     if (full !== base && !full.startsWith(base + '/')) {
       throw new Error(`путь ${relative} уходит за пределы каталога стека`);
+    }
+    return full;
+  }
+
+  /**
+   * Общий каталог: media/films и подобные, живущие вне стека. Проверка та же —
+   * манифест приезжает из чужого репозитория, и `../../etc` в нём не должно
+   * никуда попасть.
+   */
+  resolveShared(relative: string): string {
+    const base = this.paths.root;
+    const full = path.posix.normalize(path.posix.join(base, relative));
+    if (full === base || !full.startsWith(base + '/')) {
+      throw new Error(`общий путь ${relative} уходит за пределы ${base}`);
+    }
+    if (full === this.paths.stacks || full.startsWith(this.paths.stacks + '/')) {
+      throw new Error(`общий путь ${relative} ведёт внутрь stacks — это каталог стеков`);
     }
     return full;
   }

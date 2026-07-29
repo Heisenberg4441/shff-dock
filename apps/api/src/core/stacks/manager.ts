@@ -80,6 +80,7 @@ export class StackManager {
       DOCK_STACK_ID: id,
       DOCK_STACK_DIR: dir,
       DOCK_DATA_DIR: path.posix.join(dir, 'data'),
+      DOCK_MEDIA_DIR: this.layout.paths.media,
       DOCK_NETWORK: this.deps.network,
       DOCK_TZ: settings.tz,
       DOCK_DOMAIN: settings.domain,
@@ -418,7 +419,12 @@ export class StackManager {
     }
 
     for (const volume of manifest.volumes ?? []) {
-      const target = this.layout.resolveInStack(id, volume.path);
+      // Общий каталог считается от корня раскладки и стеку не принадлежит:
+      // media/films наполняет качалка, читает медиатека, а снос любой из них
+      // библиотеку задевать не должен.
+      const target = volume.shared
+        ? this.layout.resolveShared(volume.path)
+        : this.layout.resolveInStack(id, volume.path);
       await fs.mkdir(target, { recursive: true });
       if (volume.mode) {
         await fs.chmod(target, Number.parseInt(volume.mode, 8)).catch(() => undefined);

@@ -9,6 +9,8 @@ export interface StackContext {
   DOCK_STACK_DIR: string;
   /** /home/dock/stacks/<id>/data */
   DOCK_DATA_DIR: string;
+  /** /home/dock/media — общая библиотека, одна на все медийные стеки. */
+  DOCK_MEDIA_DIR: string;
   DOCK_NETWORK: string;
   DOCK_TZ: string;
   /** Базовый домен из настроек панели: home.lan. */
@@ -23,6 +25,7 @@ export function contextKeys(): string[] {
     'DOCK_STACK_ID',
     'DOCK_STACK_DIR',
     'DOCK_DATA_DIR',
+    'DOCK_MEDIA_DIR',
     'DOCK_NETWORK',
     'DOCK_TZ',
     'DOCK_DOMAIN',

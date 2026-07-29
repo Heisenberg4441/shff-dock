@@ -77,6 +77,12 @@ export const config = {
     root: dockRoot,
     /** /home/dock/stacks/<id> — по каталогу на стек. */
     stacks: path.posix.join(dockRoot, 'stacks'),
+    /**
+     * Общая медиатека: music, films, shows. Лежит вне стеков намеренно —
+     * качалка, музыкальный сервер и медиаплеер это разные стеки с одной
+     * библиотекой, и снос любого из них не должен её задевать.
+     */
+    media: path.posix.join(dockRoot, 'media'),
     /** Кэш скачанных манифестов реестра. */
     registry: path.posix.join(dockRoot, 'registry'),
     backups: path.posix.join(dockRoot, 'backups'),

@@ -157,8 +157,18 @@ export function parseManifest(source: string): StackManifest {
         if (owner && !/^\d+:\d+$/.test(owner)) {
           throw new ManifestError(`volumes[${volPath}].owner = ${owner}: ожидается uid:gid`);
         }
+        // Общий каталог живёт вне стека, поэтому путь к нему проверяется строже:
+        // манифест приезжает из чужого репозитория, а пишем мы по нему в корень
+        // раскладки.
+        const shared = entry.shared === true;
+        if (shared && (volPath.startsWith('/') || /(^|\/)\.\.(\/|$)/.test(volPath))) {
+          throw new ManifestError(
+            `volumes[${volPath}]: общий каталог задаётся путём внутри раскладки, без / в начале и без ..`,
+          );
+        }
         return {
           path: volPath,
+          ...(shared ? { shared: true } : {}),
           ...(owner ? { owner } : {}),
           ...(optionalString(entry, 'mode') ? { mode: optionalString(entry, 'mode') as string } : {}),
         };
