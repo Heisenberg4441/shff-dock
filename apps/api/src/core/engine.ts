@@ -20,8 +20,10 @@ import type { DockerDriver, DriverContext, ProgressFn } from './driver';
 import { DriverError, NotFoundError } from './driver';
 import { DockerodeDriver } from './drivers/dockerode-driver';
 import { MockDriver } from './drivers/mock-driver';
+import type { HostIdentity } from './host-identity';
+import { detectHostIdentity } from './host-identity';
 import { LogBus } from './log-bus';
-import { SettingsStore } from './settings-store';
+import { DEFAULT_SETTINGS, SettingsStore } from './settings-store';
 import { ComposeRunner } from './stacks/compose';
 import { Layout } from './stacks/layout';
 import { StackManager } from './stacks/manager';
@@ -67,7 +69,11 @@ export class DockEngine {
 
   constructor(private readonly config: Config) {
     this.logs = new LogBus(config.logBuffer);
-    this.settingsStore = new SettingsStore(config.paths.config);
+    this.settingsStore = new SettingsStore(
+      config.paths.config,
+      () => this.hostIdentity(),
+      (text, level) => void this.logs.push('dock', text, level ?? 'dim'),
+    );
     this.layout = new Layout(config.paths);
 
     this.registry = new Registry(
@@ -212,6 +218,25 @@ export class DockEngine {
 
   getHost(): HostStats {
     return this.hostStats;
+  }
+
+  /**
+   * Явно заданное переменными окружения побеждает автоопределение: если панель
+   * читает не тот корень или имя хоста наружу другое, спорить с человеком
+   * незачем.
+   */
+  private async hostIdentity(): Promise<HostIdentity> {
+    const detected = await detectHostIdentity(
+      this.config.metrics.rootfs,
+      this.config.docker.puid,
+      DEFAULT_SETTINGS,
+    );
+    const forced = this.config.identity;
+    return {
+      hostname: forced.hostname || detected.hostname,
+      tz: forced.tz || detected.tz,
+      operator: forced.operator || detected.operator,
+    };
   }
 
   async refresh(): Promise<void> {

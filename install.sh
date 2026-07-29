@@ -165,6 +165,10 @@ step "Готовлю раскладку"
 PUID="${SUDO_UID:-1000}"
 PGID="${SUDO_GID:-1000}"
 
+# Кого показывать оператором в панели. Через sudo это известно наверняка;
+# при запуске от чистого root пусто — панель поищет владельца PUID в /etc/passwd.
+OPERATOR="${DOCK_OPERATOR:-${SUDO_USER:-}}"
+
 mkdir -p "$DOCK_ROOT" "$INSTALL_DIR"
 info "данные:  $DOCK_ROOT"
 info "конфиг:  $INSTALL_DIR/docker-compose.yml"
@@ -206,6 +210,9 @@ services:
       DOCK_PGID: \${DOCK_PGID}
       DOCK_REGISTRY_URL: \${DOCK_REGISTRY_URL}
       DOCK_REGISTRY_TTL: \${DOCK_REGISTRY_TTL}
+      # Имя хоста и часовой пояс панель определяет по /host/rootfs сама;
+      # оператора точнее знает установщик — из sudo.
+      DOCK_OPERATOR: \${DOCK_OPERATOR}
       LOG_LEVEL: \${LOG_LEVEL}
 
     networks:
@@ -232,6 +239,9 @@ DOCK_ROOT=$DOCK_ROOT
 DOCK_NETWORK=$NETWORK
 DOCK_PUID=$PUID
 DOCK_PGID=$PGID
+
+# Пусто — панель определит по хосту сама.
+DOCK_OPERATOR=$OPERATOR
 
 # Пусто — берётся реестр SHFF. Свой репозиторий стеков указывается raw-адресом:
 # https://raw.githubusercontent.com/<owner>/<repo>/<ref>

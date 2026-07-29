@@ -49,6 +49,13 @@ services:
       DOCK_REGISTRY_URL: ${DOCK_REGISTRY_URL:-}
       DOCK_REGISTRY_TTL: ${DOCK_REGISTRY_TTL:-60}
 
+      # Пусто — панель читает имя хоста, часовой пояс и оператора с хоста,
+      # примонтированного в /host/rootfs. Задавать имеет смысл, только если
+      # автоопределение промахнулось.
+      DOCK_HOSTNAME: ${DOCK_HOSTNAME:-}
+      DOCK_TZ: ${DOCK_TZ:-}
+      DOCK_OPERATOR: ${DOCK_OPERATOR:-}
+
       LOG_LEVEL: ${LOG_LEVEL:-info}
 
     networks:
