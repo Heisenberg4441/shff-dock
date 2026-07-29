@@ -9,6 +9,12 @@ data
 *.log
 *.md
 !README.md
+
+# Скриншоты для README — в образе им делать нечего, а весят они больше
+# самого приложения.
+docs
+.github
+
 .idea
 .vscode
 SHFF Dock.dc.html
