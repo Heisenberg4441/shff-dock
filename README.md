@@ -82,11 +82,14 @@ curl -fsSL https://raw.githubusercontent.com/Heisenberg4441/shff-dock/master/ins
 |---|---|
 | **grafana + prometheus + loki** | Наблюдаемость из коробки: датасорсы и дашборд по хосту уже прописаны |
 | **vaultwarden** | Менеджер паролей, работает с клиентами bitwarden |
-| **gitea** | Свой git-хостинг: репозитории, issues, actions |
+| **gitea** | Лёгкий git-хостинг: репозитории, issues, actions |
+| **gitlab-ce** | То же, но по-взрослому: CI/CD, реестр образов, доски задач |
 | **paperless-ngx** | Архив бумажных документов с OCR и поиском по тексту |
 | **adguard-home** | DNS-фильтр на весь дом, режет рекламу до загрузки |
 | **uptime-kuma** | Следит за своими же сервисами, пишет в телеграм |
+| **qbittorrent** | Торрент-клиент с веб-мордой, качает в фоне |
 | **navidrome** | Стриминг своей музыки, совместим с subsonic-клиентами |
+| **torrserver** | Смотрит торренты потоком, отдаёт их телевизору |
 
 Список живёт в отдельном репозитории
 [**shff-registry**](https://github.com/Heisenberg4441/shff-registry) и
