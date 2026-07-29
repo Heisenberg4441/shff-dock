@@ -32,6 +32,20 @@ function firstExisting(candidates: string[], fallback: string): string {
   return fallback;
 }
 
+/**
+ * Адрес реестра стеков.
+ *
+ * Пусто — реестр SHFF по умолчанию: сразу после установки каталог не должен
+ * быть пустым. Слово `off` выключает удалённый реестр совсем — это нужно тем,
+ * кто держит свой каталог локально и не хочет, чтобы одноимённые стеки с
+ * гитхаба перекрывали его собственные.
+ */
+function registryUrl(): string {
+  const raw = str('DOCK_REGISTRY_URL', '').trim();
+  if (raw.toLowerCase() === 'off') return '';
+  return raw || 'https://raw.githubusercontent.com/Heisenberg4441/shff-registry/master';
+}
+
 const socketPath = str('DOCK_DOCKER_SOCKET', '/var/run/docker.sock');
 const driverEnv = str('DOCK_DRIVER', 'auto').toLowerCase();
 
@@ -95,10 +109,7 @@ export const config = {
    * коммитом в этот репозиторий, а не пересборкой и переустановкой панели.
    * Формат: https://raw.githubusercontent.com/<owner>/<repo>/<ref>
    */
-  registryUrl: str(
-    'DOCK_REGISTRY_URL',
-    'https://raw.githubusercontent.com/Heisenberg4441/shff-registry/master',
-  ),
+  registryUrl: registryUrl(),
 
   /**
    * Как часто перечитывается индекс реестра, минуты. Ноль и меньше — только

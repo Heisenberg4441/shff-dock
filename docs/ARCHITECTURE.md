@@ -171,7 +171,7 @@ arm64 собирается через qemu и заметно дольше amd64;
 | `PORT` | `7788` | Порт панели |
 | `DOCK_DRIVER` | по наличию сокета | `mock` или `docker` |
 | `DOCK_ROOT` | `/home/dock` | Корень раскладки |
-| `DOCK_REGISTRY_URL` | `…/shff-registry/master` | Репозиторий со стеками (raw-адрес) |
+| `DOCK_REGISTRY_URL` | `…/shff-registry/master` | Репозиторий со стеками (raw-адрес); `off` — только локальный |
 | `DOCK_REGISTRY_TTL` | `60` | Как часто перечитывать реестр, мин; `0` — только вручную |
 | `DOCK_BUNDLED_REGISTRY` | — | Реестр на диске в основу удалённого |
 | `DOCK_DOCKER_SOCKET` | `/var/run/docker.sock` | Сокет демона |
